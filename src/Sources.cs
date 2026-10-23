@@ -68,7 +68,9 @@ namespace Nowcast
             Browser(@"yandex|^browser", Text.Ru ? "Яндекс Браузер" : "Yandex Browser"),
             Browser(@"chrome", "Chrome"),
             Browser(@"msedge|microsoftedge", "Edge"),
-            Browser(@"firefox|308046B0AF4A39CB", "Firefox"),
+            // Firefox names itself by a hash of its folder: 308046B0AF4A39CB in
+            // the usual one, other 16 hex digits elsewhere and in its forks (Zen, Floorp, LibreWolf).
+            Browser(@"firefox|^[0-9a-f]{16}$", "Firefox"),
             Browser(@"opera", "Opera"),
             Browser(@"vivaldi", "Vivaldi"),
             Browser(@"brave", "Brave"),
