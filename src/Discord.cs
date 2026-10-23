@@ -22,8 +22,9 @@ namespace Nowcast
         // Why Discord was not reached last time: written to the log once, not every 3 s.
         string lastMiss;
 
-        // Discord is there but turned the program away: it runs as
-        // administrator, and a program that does not cannot reach it.
+        // Discord is there but Windows turns the program away: Discord runs as
+        // administrator or as another user, or an antivirus sandbox (Avast)
+        // runs this program with too few rights.
         public bool IsDenied { get; private set; }
 
         [DllImport("kernel32.dll", SetLastError = true)]
