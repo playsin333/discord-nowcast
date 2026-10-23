@@ -179,8 +179,10 @@ namespace Nowcast
         }
 
         // Both hosts are tried for every cover; one that failed lately goes
-        // last, so a cover does not wait for it to time out first.
-        static readonly string[] hosts = { "litterbox", "uguu.se" };
+        // last, so a cover does not wait for it to time out first. uguu.se
+        // comes first: since October 2026 litterbox answers "412 No file!"
+        // to every upload, its own site's included.
+        static readonly string[] hosts = { "uguu.se", "litterbox" };
         static readonly DateTime[] downUntil = new DateTime[hosts.Length];
 
         static string Upload(byte[] image)
@@ -194,7 +196,7 @@ namespace Nowcast
                     if ((DateTime.Now < downUntil[i]) != (pass == 1)) continue;
                     try
                     {
-                        return i == 0 ? ToLitterbox(image) : ToUguu(image);
+                        return i == 0 ? ToUguu(image) : ToLitterbox(image);
                     }
                     catch (Exception e)
                     {

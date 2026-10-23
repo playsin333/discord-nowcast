@@ -84,10 +84,19 @@ namespace Nowcast
             }
             // Sites installed as apps (Chrome._crx_…) and Store apps (…!App):
             // the name from the Start menu, so SoundCloud reads as SoundCloud.
-            if (name == null && (app.Contains("_crx_") || app.Contains("!"))) name = StartMenuName(app);
+            var isStartMenu = false;
+            if (name == null && (app.Contains("_crx_") || app.Contains("!")))
+            {
+                name = StartMenuName(app);
+                isStartMenu = name != null;
+            }
 
             // The button follows the name when it is known, the app ID otherwise.
-            var rule = (name == null ? null : Match(name)) ?? Match(app);
+            var byName = name == null ? null : Match(name);
+            var rule = byName ?? Match(app);
+            // A known service by its own name: "SoundCloud - Music & Audio",
+            // as the Start menu has it, reads "SoundCloud".
+            if (isStartMenu && byName != null && byName.ClientId != null) name = byName.Name;
             if (name == null) name = rule != null ? rule.Name : Fallback(app);
             return Info(name, rule);
         }
