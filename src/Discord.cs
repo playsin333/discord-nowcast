@@ -19,6 +19,8 @@ namespace Nowcast
 
         readonly JavaScriptSerializer json = new JavaScriptSerializer();
         NamedPipeClientStream pipe;
+        // Why Discord was not reached last time: written to the log once, not every 3 s.
+        string lastMiss;
 
         [DllImport("kernel32.dll", SetLastError = true)]
         static extern bool PeekNamedPipe(SafePipeHandle pipe, IntPtr buffer, int size, IntPtr read, out int available, IntPtr left);
@@ -56,6 +58,7 @@ namespace Nowcast
             {
                 pipes = new string[0];
             }
+            var miss = "no discord-ipc pipe: Discord is closed, or it is the browser version";
             for (var index = 0; index < 10; index++)
             {
                 var name = "discord-ipc-" + index;
@@ -65,8 +68,10 @@ namespace Nowcast
                 {
                     candidate.Connect(300);
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
+                    // Access denied: Discord runs as administrator and this does not.
+                    miss = name + ": " + e.Message;
                     candidate.Dispose();
                     continue;
                 }
@@ -81,6 +86,7 @@ namespace Nowcast
                         var data = reply["data"] as Dictionary<string, object>;
                         var user = data == null ? null : data["user"] as Dictionary<string, object>;
                         Log.Write("Connected to Discord" + (user == null ? "" : " as " + Value(user, "username")));
+                        lastMiss = null;
                         return true;
                     }
                     Log.Write("Discord refused: " + json.Serialize(reply));
@@ -90,7 +96,10 @@ namespace Nowcast
                     Log.Write("Discord refused: " + e.Message);
                 }
                 candidate.Dispose();
+                miss = null;
             }
+            if (miss != null && miss != lastMiss) Log.Write("Discord not found: " + miss);
+            lastMiss = miss;
             return false;
         }
 
