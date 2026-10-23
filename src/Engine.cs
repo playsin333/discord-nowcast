@@ -172,7 +172,7 @@ namespace Nowcast
                 }
             }
 
-            Report(!discord.IsConnected ? Text.DiscordOff
+            Report(!discord.IsConnected ? (discord.IsDenied ? Text.DiscordElevated : Text.DiscordOff)
                 : isHidden ? string.Format(Text.HiddenUntil, HiddenUntil)
                 : track == null ? Text.NothingPlaying
                 : Describe(track));

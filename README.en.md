@@ -51,6 +51,16 @@ It is a false positive. The file has no digital signature, adds itself to startu
 
 Every new version is sent to Microsoft as a false positive; Defender usually stops flagging it within a few days.
 
+### The tray icon says "Discord runs as administrator"
+
+Windows does not let a regular program connect to one running as administrator. It can happen even when you open Discord as usual: its properties may have the run-as-administrator box checked. To check, in Task Manager go to **Details** → right-click a column header → **Select columns** → **Elevated**. If Discord.exe shows "Yes":
+
+1. Quit Discord completely (right-click its tray icon → **Quit Discord**).
+2. Right-click the Discord shortcut → **Properties** → **Compatibility**: clear **Run this program as an administrator**. Check `Update.exe` in `%LOCALAPPDATA%\Discord` the same way.
+3. Open Discord again.
+
+If that does not help, run discord-nowcast as administrator too: right-click the exe → **Run as administrator**.
+
 ## The tray icon
 
 The raven by the clock, at the bottom right of the screen, is how you control it. Only you see it; nobody in Discord does. Hover for the current track, click for the menu:

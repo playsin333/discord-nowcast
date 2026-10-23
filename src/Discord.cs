@@ -22,6 +22,10 @@ namespace Nowcast
         // Why Discord was not reached last time: written to the log once, not every 3 s.
         string lastMiss;
 
+        // Discord is there but turned the program away: it runs as
+        // administrator, and a program that does not cannot reach it.
+        public bool IsDenied { get; private set; }
+
         [DllImport("kernel32.dll", SetLastError = true)]
         static extern bool PeekNamedPipe(SafePipeHandle pipe, IntPtr buffer, int size, IntPtr read, out int available, IntPtr left);
 
@@ -59,6 +63,7 @@ namespace Nowcast
                 pipes = new string[0];
             }
             var miss = "no discord-ipc pipe: Discord is closed, or it is the browser version";
+            IsDenied = false;
             for (var index = 0; index < 10; index++)
             {
                 var name = "discord-ipc-" + index;
@@ -71,6 +76,7 @@ namespace Nowcast
                 catch (Exception e)
                 {
                     // Access denied: Discord runs as administrator and this does not.
+                    if (e is UnauthorizedAccessException) IsDenied = true;
                     miss = name + ": " + e.Message;
                     candidate.Dispose();
                     continue;
@@ -87,6 +93,7 @@ namespace Nowcast
                         var user = data == null ? null : data["user"] as Dictionary<string, object>;
                         Log.Write("Connected to Discord" + (user == null ? "" : " as " + Value(user, "username")));
                         lastMiss = null;
+                        IsDenied = false;
                         return true;
                     }
                     Log.Write("Discord refused: " + json.Serialize(reply));
