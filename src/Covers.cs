@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 
 namespace Nowcast
@@ -31,14 +32,32 @@ namespace Nowcast
         static readonly Dictionary<string, int> triesLeft = new Dictionary<string, int>();
         // Tracks already looked up in iTunes: one search per track.
         static readonly HashSet<string> searched = new HashSet<string>();
+        // Lookups and uploads under way. They run in the background: a slow
+        // host held the whole status back for up to a minute.
+        static readonly Dictionary<string, Task<string>> pending = new Dictionary<string, Task<string>>();
 
-        // The URL of the track's cover, or null when there is none yet.
+        // The URL of the track's cover, or null when there is none yet; the
+        // status goes without it and gets it when the lookup is done.
         // search: look in iTunes first.
         public static string Find(Track track, bool search)
         {
             string url;
-            if (cache.TryGetValue(track.Key, out url)) return url;
-            if (!IsDue(track.Key)) return null;
+            var key = track.Key;
+            if (cache.TryGetValue(key, out url)) return url;
+            Task<string> job;
+            if (pending.TryGetValue(key, out job))
+            {
+                if (!job.IsCompleted) return null;
+                pending.Remove(key);
+                if (job.Result != null)
+                {
+                    cache[key] = job.Result;
+                    return job.Result;
+                }
+                Later(key, 10);
+                return null;
+            }
+            if (!IsDue(key)) return null;
             if (cache.Count > 500)
             {
                 cache.Clear();
@@ -46,35 +65,47 @@ namespace Nowcast
                 triesLeft.Clear();
                 searched.Clear();
             }
-            if (search && searched.Add(track.Key))
-            {
-                url = Search(track);
-                if (url != null)
-                {
-                    cache[track.Key] = url;
-                    return url;
-                }
-            }
+            var isSearch = search && searched.Add(key);
+            byte[] image;
             try
             {
-                var image = Media.ReadThumbnail(track);
-                if (image == null)
-                {
-                    // Browsers hand the picture to Windows a few seconds after
-                    // the track starts, so no cover now does not mean none.
-                    Later(track.Key, 3);
-                    return null;
-                }
-                url = Upload(image);
+                // On this thread: the thumbnail is a Windows Runtime object of the session.
+                image = Media.ReadThumbnail(track);
             }
             catch (Exception e)
             {
-                Log.Write("Cover not uploaded: " + Message(e));
-                Later(track.Key, 10);
+                Log.Write("Cover not read: " + Message(e));
+                image = null;
+            }
+            if (!isSearch && image == null)
+            {
+                // Browsers hand the picture to Windows a few seconds after
+                // the track starts, so no cover now does not mean none.
+                Later(key, 3);
                 return null;
             }
-            cache[track.Key] = url;
-            return url;
+            pending[key] = Task.Run(() => Look(track, isSearch, image));
+            return null;
+        }
+
+        // In the background: the iTunes art, else the player's picture uploaded.
+        static string Look(Track track, bool search, byte[] image)
+        {
+            if (search)
+            {
+                var url = Search(track);
+                if (url != null) return url;
+            }
+            if (image == null) return null;
+            try
+            {
+                return Upload(image);
+            }
+            catch (Exception e)
+            {
+                Log.Write("Cover not uploaded, will try again: " + Message(e));
+                return null;
+            }
         }
 
         // The album art for the same artist and title in the iTunes search, or
@@ -133,6 +164,8 @@ namespace Nowcast
         {
             DateTime at;
             int left;
+            Task<string> job;
+            if (pending.TryGetValue(key, out job)) return job.IsCompleted;
             if (!retryAt.TryGetValue(key, out at)) return true;
             return DateTime.Now >= at && triesLeft.TryGetValue(key, out left) && left > 0;
         }
@@ -145,25 +178,33 @@ namespace Nowcast
             retryAt[key] = DateTime.Now.AddSeconds(seconds);
         }
 
-        // A host that failed is skipped for a while, so every track does not
-        // wait for it to time out first.
-        static DateTime litterboxDownUntil = DateTime.MinValue;
+        // Both hosts are tried for every cover; one that failed lately goes
+        // last, so a cover does not wait for it to time out first.
+        static readonly string[] hosts = { "litterbox", "uguu.se" };
+        static readonly DateTime[] downUntil = new DateTime[hosts.Length];
 
         static string Upload(byte[] image)
         {
-            if (DateTime.Now >= litterboxDownUntil)
+            Exception last = null;
+            for (var pass = 0; pass < 2; pass++)
             {
-                try
+                for (var i = 0; i < hosts.Length; i++)
                 {
-                    return ToLitterbox(image);
-                }
-                catch (Exception e)
-                {
-                    Log.Write("litterbox failed, trying uguu.se: " + Message(e));
-                    litterboxDownUntil = DateTime.Now.AddMinutes(30);
+                    // First the hosts that work, then the ones that failed lately.
+                    if ((DateTime.Now < downUntil[i]) != (pass == 1)) continue;
+                    try
+                    {
+                        return i == 0 ? ToLitterbox(image) : ToUguu(image);
+                    }
+                    catch (Exception e)
+                    {
+                        Log.Write(hosts[i] + " failed: " + Message(e));
+                        downUntil[i] = DateTime.Now.AddMinutes(10);
+                        last = e;
+                    }
                 }
             }
-            return ToUguu(image);
+            throw last;
         }
 
         // litterbox.catbox.moe: kept for three days.
@@ -189,7 +230,7 @@ namespace Nowcast
             catch (Exception)
             {
             }
-            throw new InvalidOperationException("uguu.se: " + Short(text));
+            throw new InvalidOperationException(Short(text));
         }
 
         static string Post(string url, HttpContent form)
@@ -236,11 +277,12 @@ namespace Nowcast
             return image.Length > 1 && image[0] == 0x89 && image[1] == 0x50;
         }
 
-        // An error page's title, or the start of the reply: never the whole page in the log.
+        // An error page's title or heading, or the start of the reply: never
+        // the whole page in the log.
         static string Short(string text)
         {
-            var title = Regex.Match(text, "<title>(.*?)</title>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            text = title.Success ? title.Groups[1].Value : text;
+            var title = Regex.Match(text, "<title>(.*?)</title>|<h1>(.*?)</h1>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            text = title.Success ? title.Groups[1].Value + title.Groups[2].Value : text;
             text = Regex.Replace(text, @"\s+", " ").Trim();
             return text.Length > 120 ? text.Substring(0, 120) + "…" : text;
         }
