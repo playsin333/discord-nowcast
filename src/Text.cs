@@ -23,7 +23,7 @@ namespace Nowcast
 
         public static readonly string NothingPlaying = T("Ничего не играет", "Nothing is playing");
         public static readonly string DiscordOff = T("Discord не запущен", "Discord is not running");
-        public static readonly string DiscordElevated = T("Discord запущен от администратора", "Discord runs as administrator");
+        public static readonly string DiscordElevated = T("Нет доступа к Discord: админ или антивирус", "No access to Discord: admin or antivirus");
         public static readonly string HiddenUntil = T("Статус скрыт до {0:HH:mm}", "Status hidden until {0:t}");
         public static readonly string MediaUnavailable = T("Windows не даёт узнать, что играет", "Windows won't tell what is playing");
         public static readonly string MediaRemoved = T("Урезанная сборка Windows: нет поддержки медиа", "This Windows build has no media support");
