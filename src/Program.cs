@@ -6,6 +6,7 @@
 // no expression-bodied members.
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -16,7 +17,7 @@ namespace Nowcast
     static class Program
     {
         // Raise with every release, together with a CHANGELOG.md entry.
-        public const string Version = "1.4.11";
+        public const string Version = "1.4.12";
         public const string Repo = "playsin333/discord-nowcast";
         // The project's Discord server: questions, bugs, screenshots of the status.
         public const string DiscordInvite = "https://discord.gg/pHzmvghmJR";
@@ -59,6 +60,20 @@ namespace Nowcast
             finally
             {
                 mutex.ReleaseMutex();
+            }
+        }
+
+        // A link in the browser (argument null), or a file in a program.
+        public static void Open(string file, string argument)
+        {
+            try
+            {
+                if (argument == null) Process.Start(file);
+                else Process.Start(file, "\"" + argument + "\"");
+            }
+            catch (Exception e)
+            {
+                Log.Write("Could not open " + file + ": " + e.Message);
             }
         }
     }

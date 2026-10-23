@@ -91,18 +91,21 @@ namespace Nowcast
         // The site found for a track in a browser, kept for as long as it plays:
         // its tab need not stay in front, and the status does not flip back.
         static readonly Dictionary<string, SourceInfo> sites = new Dictionary<string, SourceInfo>();
+        // Not found yet: the windows are looked through again at most every 5 s.
+        static readonly Dictionary<string, DateTime> lookAgainAt = new Dictionary<string, DateTime>();
 
         static SourceInfo Site(string app, string artist, string title)
         {
             var key = app + "|" + artist + "|" + title;
             SourceInfo site;
             if (sites.TryGetValue(key, out site)) return site;
+            DateTime at;
+            if (lookAgainAt.TryGetValue(key, out at) && DateTime.Now < at) return null;
             site = Sources.FromWindows(title, artist);
-            if (site != null)
-            {
-                if (sites.Count > 100) sites.Clear();
-                sites[key] = site;
-            }
+            if (sites.Count > 100) sites.Clear();
+            if (lookAgainAt.Count > 100) lookAgainAt.Clear();
+            if (site != null) sites[key] = site;
+            else lookAgainAt[key] = DateTime.Now.AddSeconds(5);
             return site;
         }
 

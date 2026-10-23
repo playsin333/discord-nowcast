@@ -285,6 +285,7 @@ namespace Nowcast
 
         void Report(string status)
         {
+            if (status == Status) return;
             Status = status;
             var handler = Changed;
             if (handler != null) handler();

@@ -12,8 +12,7 @@ namespace Nowcast
     // The cover: the album art from the iTunes search when the same artist and
     // title are found there, a link Discord shows as is. Otherwise the picture
     // the player handed to Windows; Discord only shows pictures by URL, so it
-    // goes to litterbox.catbox.moe, a temporary image host that keeps it three
-    // days, or uguu.se when litterbox is down.
+    // goes to a temporary file host: uguu.se, x0.at or litterbox.catbox.moe.
     static class Covers
     {
         static readonly HttpClient http = Client();
@@ -178,11 +177,11 @@ namespace Nowcast
             retryAt[key] = DateTime.Now.AddSeconds(seconds);
         }
 
-        // Both hosts are tried for every cover; one that failed lately goes
-        // last, so a cover does not wait for it to time out first. uguu.se
-        // comes first: since October 2026 litterbox answers "412 No file!"
+        // Every host is tried for a cover, in this order; one that failed
+        // lately goes last, so a cover does not wait for it to time out first.
+        // litterbox is the last: since October 2026 it answers "412 No file!"
         // to every upload, its own site's included.
-        static readonly string[] hosts = { "uguu.se", "litterbox" };
+        static readonly string[] hosts = { "uguu.se", "x0.at", "litterbox" };
         static readonly DateTime[] downUntil = new DateTime[hosts.Length];
 
         static string Upload(byte[] image)
@@ -196,7 +195,7 @@ namespace Nowcast
                     if ((DateTime.Now < downUntil[i]) != (pass == 1)) continue;
                     try
                     {
-                        return i == 0 ? ToUguu(image) : ToLitterbox(image);
+                        return i == 0 ? ToUguu(image) : i == 1 ? ToX0(image) : ToLitterbox(image);
                     }
                     catch (Exception e)
                     {
@@ -214,6 +213,14 @@ namespace Nowcast
         {
             var fields = new Dictionary<string, string> { { "reqtype", "fileupload" }, { "time", "72h" } };
             var text = Post("https://litterbox.catbox.moe/resources/internals/api.php", Form(fields, "fileToUpload", image)).Trim();
+            if (!text.StartsWith("https://") || text.Contains(" ")) throw new InvalidOperationException(Short(text));
+            return text;
+        }
+
+        // x0.at: kept for 3 to 100 days, longer for small files.
+        static string ToX0(byte[] image)
+        {
+            var text = Post("https://x0.at/", Form(new Dictionary<string, string>(), "file", image)).Trim();
             if (!text.StartsWith("https://") || text.Contains(" ")) throw new InvalidOperationException(Short(text));
             return text;
         }

@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -53,11 +51,11 @@ namespace Nowcast
             menu.Items.Add(sessionsItem);
             menu.Items.Add(autostartItem);
             menu.Items.Add(Text.Settings, null, delegate { ShowSettings(); });
-            menu.Items.Add(Text.OpenLog, null, delegate { Open("notepad.exe", Log.FilePath); });
+            menu.Items.Add(Text.OpenLog, null, delegate { Program.Open("notepad.exe", Log.FilePath); });
             menu.Items.Add(updateItem);
             menu.Items.Add(new ToolStripSeparator());
-            if (Program.DiscordInvite != "") menu.Items.Add(Text.DiscordServer, null, delegate { Open(Program.DiscordInvite, null); });
-            menu.Items.Add(Text.GitHub, null, delegate { Open("https://github.com/" + Program.Repo, null); });
+            menu.Items.Add(Text.DiscordServer, null, delegate { Program.Open(Program.DiscordInvite, null); });
+            menu.Items.Add(Text.GitHub, null, delegate { Program.Open("https://github.com/" + Program.Repo, null); });
             menu.Items.Add(Text.Exit, null, delegate { ExitThread(); });
             menu.Opening += delegate { RefreshMenu(); };
             menu.ShowItemToolTips = true;
@@ -139,21 +137,13 @@ namespace Nowcast
             settingsForm.ShowAgain();
         }
 
-        // A checkbox per app playing now, plus the hidden ones, so they can come
-        // back: a cleared box keeps that app out of the status (the "hide" setting).
+        // A checkbox per source: a cleared box keeps that app out of the status.
         void RefreshSources()
         {
             sourcesItem.DropDownItems.Clear();
-            var settings = engine.Settings;
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var track in engine.Sessions)
+            foreach (var choice in engine.Settings.SourceChoices(engine.Sessions))
             {
-                if (!seen.Add(track.Source.Name)) continue;
-                AddSource(track.Source.Name, track.App, !settings.Hides(track.App, track.Source.Name));
-            }
-            foreach (var word in settings.Hide)
-            {
-                if (seen.Add(word)) AddSource(word, word, false);
+                AddSource(choice.Name, choice.App, choice.IsShown);
             }
             if (sourcesItem.DropDownItems.Count == 0)
             {
@@ -218,26 +208,13 @@ namespace Nowcast
                 Log.Write("Update failed: " + message);
                 Say(string.Format(Text.UpdateFailed, message));
                 // Perhaps no rights to the folder: the release page still works.
-                if (target.PageUrl != null) Open(target.PageUrl, null);
+                if (target.PageUrl != null) Program.Open(target.PageUrl, null);
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
 
         void Say(string text)
         {
             icon.ShowBalloonTip(6000, "discord-nowcast", text, ToolTipIcon.Info);
-        }
-
-        static void Open(string file, string argument)
-        {
-            try
-            {
-                if (argument == null) Process.Start(file);
-                else Process.Start(file, "\"" + argument + "\"");
-            }
-            catch (Exception e)
-            {
-                Log.Write("Could not open " + file + ": " + e.Message);
-            }
         }
 
         protected override void ExitThreadCore()

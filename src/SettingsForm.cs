@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 using Strings = Nowcast.Text;
@@ -77,16 +75,13 @@ namespace Nowcast
             layout.Controls.Add(autostart);
             layout.Controls.Add(checkUpdates);
 
-            if (Program.DiscordInvite != "")
-            {
-                var server = Link(Strings.DiscordServer, delegate { Browse(Program.DiscordInvite); });
-                server.Margin = new Padding(0, 12, 0, 0);
-                layout.Controls.Add(server);
-            }
+            var server = Link(Strings.DiscordServer, delegate { Program.Open(Program.DiscordInvite, null); });
+            server.Margin = new Padding(0, 12, 0, 0);
+            layout.Controls.Add(server);
 
             var links = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 12, 0, 0) };
-            links.Controls.Add(Link(Strings.OpenLog, delegate { Open(Log.FilePath); }));
-            links.Controls.Add(Link(Strings.Advanced, delegate { Open(Settings.FilePath); }));
+            links.Controls.Add(Link(Strings.OpenLog, delegate { Program.Open("notepad.exe", Log.FilePath); }));
+            links.Controls.Add(Link(Strings.Advanced, delegate { Program.Open("notepad.exe", Settings.FilePath); }));
             links.Controls.Add(new Label { Text = "v" + Program.Version, AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(12, 3, 0, 0) });
             layout.Controls.Add(links);
 
@@ -148,14 +143,9 @@ namespace Nowcast
 
             // The apps playing now, plus the hidden ones, so they can come back.
             while (sources.Controls.Count > 0) sources.Controls[0].Dispose();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var track in engine.Sessions)
+            foreach (var choice in settings.SourceChoices(engine.Sessions))
             {
-                if (seen.Add(track.Source.Name)) AddSource(track.Source.Name, track.App, !settings.Hides(track.App, track.Source.Name));
-            }
-            foreach (var word in settings.Hide)
-            {
-                if (seen.Add(word)) AddSource(word, word, false);
+                AddSource(choice.Name, choice.App, choice.IsShown);
             }
             if (sources.Controls.Count == 0)
             {
@@ -236,28 +226,5 @@ namespace Nowcast
             return link;
         }
 
-        static void Browse(string url)
-        {
-            try
-            {
-                Process.Start(url);
-            }
-            catch (Exception e)
-            {
-                Log.Write("Could not open " + url + ": " + e.Message);
-            }
-        }
-
-        static void Open(string file)
-        {
-            try
-            {
-                Process.Start("notepad.exe", "\"" + file + "\"");
-            }
-            catch (Exception e)
-            {
-                Log.Write("Could not open " + file + ": " + e.Message);
-            }
-        }
     }
 }

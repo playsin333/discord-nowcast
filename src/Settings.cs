@@ -7,6 +7,14 @@ using System.Web.Script.Serialization;
 
 namespace Nowcast
 {
+    // A line of the sources list in the tray menu and the settings window.
+    class SourceChoice
+    {
+        public string Name;
+        public string App;
+        public bool IsShown;
+    }
+
     // %APPDATA%\discord-nowcast\config.json. Written with the defaults on the
     // first run; a broken file falls back to the defaults and says so in the log.
     class Settings
@@ -89,6 +97,23 @@ namespace Nowcast
                 if (source.IndexOf(word, StringComparison.OrdinalIgnoreCase) >= 0) return true;
             }
             return false;
+        }
+
+        // Each app playing now, plus the hidden ones, so they can come back.
+        public List<SourceChoice> SourceChoices(IEnumerable<Track> sessions)
+        {
+            var list = new List<SourceChoice>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var track in sessions)
+            {
+                if (!seen.Add(track.Source.Name)) continue;
+                list.Add(new SourceChoice { Name = track.Source.Name, App = track.App, IsShown = !Hides(track.App, track.Source.Name) });
+            }
+            foreach (var word in Hide)
+            {
+                if (seen.Add(word)) list.Add(new SourceChoice { Name = word, App = word, IsShown = false });
+            }
+            return list;
         }
 
         // Shows or hides a source, as the tray's Sources menu does.
