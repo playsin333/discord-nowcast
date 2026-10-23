@@ -19,6 +19,8 @@ permissions:
 
 jobs:
   release:
+    # The private working copy (discord-nowcast-dev) never releases.
+    if: github.repository == 'playsin333/discord-nowcast'
     runs-on: windows-latest
     defaults:
       run:
