@@ -27,6 +27,7 @@ namespace Nowcast
         public static readonly string HiddenUntil = T("Статус скрыт до {0:HH:mm}", "Status hidden until {0:t}");
         public static readonly string MediaUnavailable = T("Windows не даёт узнать, что играет", "Windows won't tell what is playing");
         public static readonly string MediaRemoved = T("Урезанная сборка Windows: нет поддержки медиа", "This Windows build has no media support");
+        public static readonly string MediaServiceOff = T("Отключена служба Windows (оптимизатор?)", "A Windows service is disabled (a tweaker?)");
         public static readonly string Starting = T("Запускается…", "Starting…");
 
         public static readonly string HideHour = T("Скрыть статус на час", "Hide status for an hour");
@@ -47,15 +48,18 @@ namespace Nowcast
         public static readonly string InListTitle = T("Название трека", "The track title");
         public static readonly string InListApp = T("Название приложения Discord", "The Discord application's name");
         public static readonly string CoversOption = T("Обложка трека", "Cover art");
-        public static readonly string CoverSearchOption = T("Искать обложку альбома в iTunes", "Look up the album art in iTunes");
+        public static readonly string CoverSearchOption = T("Искать в iTunes, если у плеера нет обложки", "Look in iTunes when the player has no cover");
         public static readonly string ButtonsOption = T("Кнопка «Слушать на …»", "\"Listen on …\" button");
         public static readonly string ShowPausedOption = T("Не убирать статус на паузе", "Keep the status on pause");
+        public static readonly string HideAlbumOption = T("Убрать альбом", "Hide the album");
         public static readonly string SourcesNote = T("Приложения, которые сейчас играют. Снимите галочку, чтобы не показывать его в статусе.", "Apps playing now. Clear a box to keep that app out of the status.");
         public static readonly string ProgramHeading = T("Программа", "The program");
         public static readonly string CheckUpdatesOption = T("Проверять обновления", "Check for updates");
         public static readonly string Advanced = T("Дополнительно (config.json)", "Advanced (config.json)");
         public static readonly string Close = T("Закрыть", "Close");
         public static readonly string OpenLog = T("Открыть лог", "Open log");
+        public static readonly string CopyDiagnostics = T("Скопировать диагностику", "Copy diagnostics");
+        public static readonly string DiagnosticsCopied = T("Диагностика скопирована. Вставьте её (Ctrl+V) в сообщение на форуме помощи.", "Diagnostics copied. Paste it (Ctrl+V) into your post in the help forum.");
         public static readonly string CheckUpdates = T("Проверить обновления", "Check for updates");
         public static readonly string UpdateTo = T("Обновить до {0}", "Update to {0}");
         public static readonly string UpToDate = T("У вас последняя версия, {0}.", "You have the latest version, {0}.");

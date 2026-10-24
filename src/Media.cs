@@ -51,9 +51,24 @@ namespace Nowcast
         public static List<Track> Read(Settings settings)
         {
             var list = new List<Track>();
-            var current = WinRT.Call(manager, managerType, "GetCurrentSession");
+            if (manager == null) Open();
+            object current;
+            IEnumerable sessions;
+            try
+            {
+                current = WinRT.Call(manager, managerType, "GetCurrentSession");
+                sessions = (IEnumerable)WinRT.Call(manager, managerType, "GetSessions");
+            }
+            catch (Exception)
+            {
+                // The manager can go dead under the program (Explorer restarted,
+                // the PC woke from sleep): it is asked for anew next time,
+                // instead of failing every second until a restart.
+                manager = null;
+                throw;
+            }
             var currentApp = current == null ? null : (string)WinRT.Get(current, sessionType, "SourceAppUserModelId");
-            foreach (var session in (IEnumerable)WinRT.Call(manager, managerType, "GetSessions"))
+            foreach (var session in sessions)
             {
                 try
                 {

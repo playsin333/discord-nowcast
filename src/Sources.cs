@@ -49,9 +49,11 @@ namespace Nowcast
         }
 
         // Order matters: Yandex Music before Yandex Browser, YouTube Music before YouTube.
+        // Yandex Music has no search link of its own: with a button to
+        // music.yandex.ru Discord took the status but did not show it to anyone else.
         static readonly Rule[] rules =
         {
-            new Rule(@"yandex.*music|music.*yandex|яндекс.?музык", Text.Ru ? "Яндекс Музыка" : "Yandex Music", "https://music.yandex.ru/search?text=", "1563159088265822392"),
+            new Rule(@"yandex.*music|music.*yandex|яндекс.?музык", Text.Ru ? "Яндекс Музыка" : "Yandex Music", null, "1563159088265822392"),
             new Rule(@"spotify", "Spotify", "https://open.spotify.com/search/", "1563159215709749389"),
             new Rule(@"soundcloud", "SoundCloud", "https://soundcloud.com/search?q=", "1563159356940361779"),
             new Rule(@"youtube.?music", "YouTube Music", "https://music.youtube.com/search?q=", "1563162689163886642"),
@@ -61,7 +63,7 @@ namespace Nowcast
             new Rule(@"vk.?music|vk музык|vkontakte|вконтакте|\bvk\b|\bвк\b", Text.Ru ? "VK Музыка" : "VK Music", "https://vk.com/audio?q=", "1563159553619525723"),
             new Rule(@"applemusic|apple music|itunes", "Apple Music", "https://music.apple.com/search?term=", "1563159657676021881"),
             new Rule(@"zunemusic", Text.Ru ? "Медиаплеер Windows" : "Windows Media Player", null),
-            new Rule(@"aimp", "AIMP", null),
+            new Rule(@"aimp", "AIMP", null, "1563516800287907893"),
             new Rule(@"foobar", "foobar2000", null),
             new Rule(@"vlc", "VLC", null),
             new Rule(@"musicbee", "MusicBee", null),
@@ -139,6 +141,13 @@ namespace Nowcast
                 {
                     var soundCloud = Match("soundcloud");
                     return Info(soundCloud.Name, soundCloud);
+                }
+                // The Spotify web player is titled "Title • Artist", without the site's name either.
+                if (title.Length >= 2 && artist.Length >= 2 &&
+                    window.IndexOf(title + " • " + artist, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    var spotify = Match("spotify");
+                    return Info(spotify.Name, spotify);
                 }
                 var rule = Match(rest);
                 if (rule != null && rule.ClientId != null) return Info(rule.Name, rule);

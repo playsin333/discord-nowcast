@@ -75,6 +75,7 @@ The raven by the clock, at the bottom right of the screen, is how you control it
 | Start with Windows | on by default |
 | Settings… | the settings window: what the member list shows, cover and its iTunes lookup, button, pause, sources, autostart, updates. Changes apply at once |
 | Open log | what was sent to Discord and any errors |
+| Copy diagnostics | copies all a support question needs: the program and Windows versions, what Windows sees, whether Discord was found, the settings and the end of the log. Paste it into your post in the help forum. Your user folder name is masked |
 | Check for updates | downloads the new version and restarts; it also checks by itself every six hours |
 | Exit | stops it and clears the status |
 
@@ -85,11 +86,12 @@ Most of these are in the settings window. All of them live in `config.json` in `
 | Setting | What it means |
 | --- | --- |
 | `clientId` | the Discord application whose name follows "Listening to". Yandex Music, Spotify, SoundCloud, YouTube, YouTube Music, Twitch, VK Music, Apple Music and Telegram have their own; other players share a general one. To always use your own name, create an app at [discord.com/developers/applications](https://discord.com/developers/applications) (**New Application**) and paste its **Application ID** here |
-| `inList` | what the member list shows after "Listening to": `source` where it plays (default), `artist`, `title`, or `app` for the application name |
+| `inList` | what the member list shows after "Listening to": `source` where it plays (default; for a service with a Discord application of its own the status lines are the title and the artist, the source is in the "Listening to SoundCloud" header), `artist`, `title`, or `app` for the application name |
 | `showPaused` | `true` keeps the status on pause, marked as paused |
 | `covers` | `false` turns cover art off |
-| `coverSearch` | `false` stops looking up the album art in iTunes; the player's picture is always used (in the window: *Look up the album art in iTunes*) |
+| `coverSearch` | `false` stops the iTunes lookup that is used when the player gives no picture (in the window: *Look in iTunes when the player has no cover*) |
 | `buttons` | `false` removes the "Listen on …" button |
+| `hideAlbum` | `true` removes the status's third line with the album (in the window: *Hide the album*) |
 | `checkUpdates` | `false` stops the automatic update check |
 | `image` | a picture URL to show when the player gives no cover |
 | `hide` | apps never to show: `["chrome", "Telegram"]` |
@@ -97,11 +99,11 @@ Most of these are in the settings window. All of them live in `config.json` in `
 
 ## How it works
 
-Windows already knows what is playing: it is the track card that pops up when you press the volume keys. discord-nowcast reads those system media sessions once a second and, when something changes, sends the status to Discord over its local IPC pipe, the same one games use.
+Windows already knows what is playing: it is the track card that pops up when you press the volume keys. discord-nowcast reads those system media sessions twice a second and, when something changes, sends the status to Discord over its local IPC pipe, the same one games use.
 
 - **Source name.** Taken from the app's ID. A site installed as an app (SoundCloud or YouTube Music via *Install* in Chrome or Edge) is named as in the Start menu. In a regular browser tab the site is told by the window title: the window whose title holds the track is searched for YouTube, Twitch, SoundCloud and the rest. So the status says SoundCloud, not Chrome.
 - **"Listening to SoundCloud".** Discord puts the name of the application that sent the status after "Listening to". So each service has a Discord application of its own, and discord-nowcast reconnects to the right one when the source changes. YouTube and Twitch go out as "Watching", except YouTube music channels ("Artist - Topic" and VEVO): those read "Listening to YouTube".
-- **Cover art.** First the track is looked up in the open iTunes catalog: when the same artist and title are there, the album art is used, in good quality and with nothing to upload. Otherwise it is the picture the player hands to Windows along with the track. Discord only shows pictures by URL, so it is uploaded to a temporary host: [uguu.se](https://uguu.se), or [x0.at](https://x0.at) or [litterbox.catbox.moe](https://litterbox.catbox.moe) when it is down. If the player gives no picture, Discord shows the application icon.
+- **Cover art.** It is the picture the player hands to Windows along with the track, the same one the volume flyout shows, so the status never has another track's cover. If Windows still holds the previous track's picture, that is noticed and the picture is read again. When a player puts its logo under the cover on a transparent strip (Spotify does), the strip is cut off and the status has the cover alone. Discord only shows pictures by URL, so it is uploaded to a temporary host: [uguu.se](https://uguu.se), or [x0.at](https://x0.at) or [litterbox.catbox.moe](https://litterbox.catbox.moe) when it is down. If the player gives no picture, or no host takes it, the track is looked up in the open iTunes catalog: when the same artist and title are there, the album art is used. Failing that, Discord shows the application icon. The status of a new track does not wait for its cover: it goes at once, and the cover follows a couple of seconds later. To keep the upload quick, the picture is scaled down to 300 pixels and saved as a JPEG (when nothing in it is transparent), and when a host answers slowly, the next one joins in at once.
 - **The button.** Players do not tell Windows the track's link, so "Listen on …" opens a search for the track in the same service; for Telegram and browsers, a YouTube search. Discord does not let you click your own buttons, only other people's.
 - **Rate limit.** Discord accepts at most five updates per 20 seconds, so the status changes at most once every four seconds.
 
@@ -115,7 +117,7 @@ Windows already knows what is playing: it is the track card that pops up when yo
 
 ## Privacy
 
-The artist and title go to Discord, which is the status itself, and to the iTunes search for the cover; the *Look up the album art in iTunes* box (or `"coverSearch": false`) turns that off. The cover picture from the player is uploaded to uguu.se (or x0.at, litterbox.catbox.moe); `"covers": false` turns that off. The update check asks GitHub for the latest release. Nothing else is sent anywhere.
+The artist and title go to Discord, which is the status itself, and, when the player has no cover, to the iTunes search; the *Look in iTunes when the player has no cover* box (or `"coverSearch": false`) turns that off. The cover picture from the player is uploaded to uguu.se (or x0.at, litterbox.catbox.moe); `"covers": false` turns that off. The update check asks GitHub for the latest release. Nothing else is sent anywhere.
 
 ## Building it yourself
 
@@ -125,11 +127,19 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 
 It uses the C# compiler that ships with .NET Framework 4.8 on every Windows 10 and 11, so there is nothing to install. The code is in `src`.
 
+The checks (status lines, the button, long titles, the cover, the track time) run with:
+
+```
+powershell -ExecutionPolicy Bypass -File tests\run.ps1
+```
+
+On GitHub the program is built and checked by itself after every change.
+
 ## Questions, bugs, ideas
 
 - [Discord server](https://discord.gg/pHzmvghmJR): help, news, status screenshots, mostly in Russian.
 - [Discussions](https://github.com/playsin333/discord-nowcast/discussions): questions, ideas, show your setup.
-- [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml): a screenshot of *What Windows sees* and the log help the most.
+- [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml): the diagnostics help the most: tray menu → *Copy diagnostics*, then paste it into the report.
 
 Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 

@@ -52,6 +52,7 @@ namespace Nowcast
             menu.Items.Add(autostartItem);
             menu.Items.Add(Text.Settings, null, delegate { ShowSettings(); });
             menu.Items.Add(Text.OpenLog, null, delegate { Program.Open("notepad.exe", Log.FilePath); });
+            menu.Items.Add(Text.CopyDiagnostics, null, delegate { CopyDiagnostics(); });
             menu.Items.Add(updateItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(Text.DiscordServer, null, delegate { Program.Open(Program.DiscordInvite, null); });
@@ -210,6 +211,21 @@ namespace Nowcast
                 // Perhaps no rights to the folder: the release page still works.
                 if (target.PageUrl != null) Program.Open(target.PageUrl, null);
             }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        // One text with all a support question needs, for the help forum.
+        void CopyDiagnostics()
+        {
+            try
+            {
+                Clipboard.SetText(Diagnostics.Build(engine));
+                Say(Text.DiagnosticsCopied);
+            }
+            catch (Exception e)
+            {
+                Log.Write("Diagnostics not copied: " + e.Message);
+                Say(string.Format(Text.UpdateFailed, e.Message));
+            }
         }
 
         void Say(string text)

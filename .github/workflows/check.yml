@@ -1,0 +1,22 @@
+# Builds discord-nowcast.exe and runs the checks in tests\ on every push and
+# pull request: a red cross on the commit when either fails. No release.
+name: Check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
+
+      - name: Tests
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/run.ps1

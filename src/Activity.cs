@@ -31,7 +31,13 @@ namespace Nowcast
                     Lines(activity, track.Title, artist, 0);
                     break;
                 default:
-                    Lines(activity, track.Artist != "" ? track.Artist + " — " + track.Title : track.Title, source, 1);
+                    // The application is named after the service ("Listening to
+                    // SoundCloud"): the source is in the header already, so the lines
+                    // are the title and the artist. Otherwise the source has a line.
+                    if (track.Source.ClientId != null && settings.ClientIdFor(track.Source) == track.Source.ClientId)
+                        Lines(activity, track.Title, artist, 0);
+                    else
+                        Lines(activity, track.Artist != "" ? track.Artist + " — " + track.Title : track.Title, source, 1);
                     break;
             }
             var state = (string)activity["state"];
@@ -43,9 +49,9 @@ namespace Nowcast
             if (image != null)
             {
                 assets["large_image"] = image;
-                // The line under the others: the album, or the source if not written above.
-                var caption = track.Album != "" ? track.Album : (state.StartsWith(source) ? null : source);
-                if (caption != null) assets["large_text"] = Limit(caption);
+                // The line under the others: the album, when there is one and it is
+                // not hidden. Not the source: it is in the header or a line above.
+                if (!settings.HideAlbum && track.Album != "") assets["large_text"] = Limit(track.Album);
             }
             if (assets.Count > 0) activity["assets"] = assets;
 
@@ -84,10 +90,20 @@ namespace Nowcast
         static Dictionary<string, object> Button(Track track)
         {
             var words = track.Source.Name == "Twitch" && track.Artist != "" ? track.Artist : track.Artist + " " + track.Title;
-            var query = Uri.EscapeDataString(words.Trim());
             var hasOwn = track.Source.Search != null;
             var label = hasOwn ? string.Format(track.Source.IsVideo ? Text.WatchOn : Text.ListenOn, track.Source.Name) : Text.FindOnYouTube;
-            var url = (hasOwn ? track.Source.Search : "https://www.youtube.com/results?search_query=") + query;
+            var site = hasOwn ? track.Source.Search : "https://www.youtube.com/results?search_query=";
+            // Discord turns down the whole status for a button link over 512
+            // characters, and a Cyrillic letter takes six escaped: a long
+            // Russian title got no status at all. The query is cut to fit.
+            words = words.Trim();
+            var query = Uri.EscapeDataString(words);
+            while (site.Length + query.Length > 512 && words.Length > 1)
+            {
+                words = Cut(words, words.Length * 9 / 10).TrimEnd();
+                query = Uri.EscapeDataString(words);
+            }
+            var url = site + query;
             return new Dictionary<string, object> { { "label", Limit(label, 32) }, { "url", url } };
         }
 
@@ -95,9 +111,17 @@ namespace Nowcast
         static string Limit(string text, int max = 128)
         {
             text = text.Trim();
-            if (text.Length > max) text = text.Substring(0, max - 1) + "…";
+            if (text.Length > max) text = Cut(text, max - 1) + "…";
             while (text.Length < 2) text += "⠀";
             return text;
+        }
+
+        // The first length characters, without splitting an emoji in two:
+        // half of one makes the JSON invalid and Discord drops the status.
+        static string Cut(string text, int length)
+        {
+            if (length < text.Length && length > 0 && char.IsHighSurrogate(text[length - 1])) length--;
+            return text.Substring(0, length);
         }
     }
 }

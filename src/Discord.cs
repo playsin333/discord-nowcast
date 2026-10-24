@@ -22,6 +22,11 @@ namespace Nowcast
         // Why Discord was not reached last time: written to the log once, not every 3 s.
         string lastMiss;
 
+        public string LastMiss
+        {
+            get { return lastMiss; }
+        }
+
         // Discord is there but Windows turns the program away: Discord runs as
         // administrator or as another user, or an antivirus sandbox (Avast)
         // runs this program with too few rights.
@@ -54,21 +59,13 @@ namespace Nowcast
         {
             // Only the pipes that exist: waiting on absent ones would hold up
             // the whole tick every few seconds while Discord is closed.
-            string[] pipes;
-            try
-            {
-                pipes = Directory.GetFiles(@"\\.\pipe\");
-            }
-            catch (Exception)
-            {
-                pipes = new string[0];
-            }
+            var pipes = PipeNames();
             var miss = "no discord-ipc pipe: Discord is closed, or it is the browser version";
             IsDenied = false;
             for (var index = 0; index < 10; index++)
             {
                 var name = "discord-ipc-" + index;
-                if (!pipes.Any(p => p.EndsWith("\\" + name, StringComparison.OrdinalIgnoreCase))) continue;
+                if (!pipes.Contains(name)) continue;
                 var candidate = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
                 try
                 {
@@ -109,6 +106,49 @@ namespace Nowcast
             if (miss != null && miss != lastMiss) Log.Write("Discord not found: " + miss);
             lastMiss = miss;
             return false;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        struct FindData
+        {
+            public int Attributes;
+            // Three FILETIMEs, as pairs of ints: a long would be aligned to 8 and shift the rest.
+            public int Created0, Created1, Accessed0, Accessed1, Written0, Written1;
+            public int SizeHigh, SizeLow, Reserved0, Reserved1;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string Name;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 14)] public string ShortName;
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern IntPtr FindFirstFile(string pattern, out FindData data);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern bool FindNextFile(IntPtr find, out FindData data);
+
+        [DllImport("kernel32.dll")]
+        static extern bool FindClose(IntPtr find);
+
+        // The pipes that exist now. Not Directory.GetFiles: it throws on the
+        // first pipe of any program whose name has a character not allowed in
+        // paths, and then Discord was "not found" while it was running.
+        static HashSet<string> PipeNames()
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            FindData data;
+            var find = FindFirstFile(@"\\.\pipe\*", out data);
+            if (find == new IntPtr(-1)) return names;
+            try
+            {
+                do
+                {
+                    if (data.Name != null) names.Add(data.Name);
+                } while (FindNextFile(find, out data));
+            }
+            finally
+            {
+                FindClose(find);
+            }
+            return names;
         }
 
         // null clears the status. Returns Discord's complaint, or null when it took it.

@@ -26,6 +26,7 @@ namespace Nowcast
         readonly Theme.CheckBox coverSearch = new Theme.CheckBox { Text = Strings.CoverSearchOption, Margin = new Padding(20, 3, 3, 3) };
         readonly Theme.CheckBox buttons = new Theme.CheckBox { Text = Strings.ButtonsOption };
         readonly Theme.CheckBox showPaused = new Theme.CheckBox { Text = Strings.ShowPausedOption };
+        readonly Theme.CheckBox hideAlbum = new Theme.CheckBox { Text = Strings.HideAlbumOption };
         // A checkbox per source, in a scrolling box.
         readonly FlowLayoutPanel sources = new FlowLayoutPanel
         {
@@ -68,6 +69,7 @@ namespace Nowcast
             layout.Controls.Add(coverSearch);
             layout.Controls.Add(buttons);
             layout.Controls.Add(showPaused);
+            layout.Controls.Add(hideAlbum);
             layout.Controls.Add(Heading(Strings.Sources));
             layout.Controls.Add(Note(Strings.SourcesNote));
             layout.Controls.Add(sources);
@@ -116,6 +118,7 @@ namespace Nowcast
             coverSearch.CheckedChanged += delegate { Change(s => s.CoverSearch = coverSearch.Checked); };
             buttons.CheckedChanged += delegate { Change(s => s.Buttons = buttons.Checked); };
             showPaused.CheckedChanged += delegate { Change(s => s.ShowPaused = showPaused.Checked); };
+            hideAlbum.CheckedChanged += delegate { Change(s => s.HideAlbum = hideAlbum.Checked); };
             checkUpdates.CheckedChanged += delegate { Change(s => s.CheckUpdates = checkUpdates.Checked); };
             autostart.CheckedChanged += delegate
             {
@@ -138,6 +141,7 @@ namespace Nowcast
             coverSearch.Enabled = settings.Covers;
             buttons.Checked = settings.Buttons;
             showPaused.Checked = settings.ShowPaused;
+            hideAlbum.Checked = settings.HideAlbum;
             checkUpdates.Checked = settings.CheckUpdates;
             autostart.Checked = Startup.IsEnabled;
 

@@ -21,12 +21,22 @@ namespace Nowcast
         // What is in the status now: track key, or "none".
         string sentKey;
         long? sentStart;
+        DateTime jumpedAt = DateTime.MinValue;
+        // The last timeline the app reported, and the start worked out from it.
+        string timelineKey;
+        double timelinePosition;
+        long timelineUpdated;
+        bool timelinePlaying;
+        long? timelineStart;
         bool? sentPlaying;
         bool sentCover;
         DateTime sentAt = DateTime.MinValue;
         DateTime nextConnect = DateTime.MinValue;
         DateTime? resendAt;
         string shownKey;
+        // The track last seen and when, to see how long its status took.
+        string seenKey;
+        DateTime seenAt;
 
         public DateTime HiddenUntil { get; private set; }
         // For the tray: one line about the status and the sessions Windows reports.
@@ -44,11 +54,24 @@ namespace Nowcast
             watcher.Changed += delegate { reload = true; wake.Set(); };
             watcher.Created += delegate { reload = true; wake.Set(); };
             watcher.EnableRaisingEvents = true;
+
+            // A cover that is done does not wait for the next round.
+            Covers.Ready += delegate { wake.Set(); };
         }
 
         public Settings Settings
         {
             get { return settings; }
+        }
+
+        // For the diagnostics: connected, and with which application, or why not.
+        public string DiscordState
+        {
+            get
+            {
+                if (discord.IsConnected) return "connected, application " + discord.ClientId;
+                return "not connected" + (discord.LastMiss != null ? ": " + discord.LastMiss : "");
+            }
         }
 
         public void Start()
@@ -98,21 +121,30 @@ namespace Nowcast
                     lastError = error;
                     // "Class not registered": the media sessions were cut out of
                     // this Windows (custom builds), no player can be read here.
-                    Report(cause.HResult == unchecked((int)0x80040154) ? Text.MediaRemoved : Text.MediaUnavailable);
+                    // "The service cannot be started, it is disabled": a tweaking
+                    // tool turned off a service the media sessions need.
+                    Report(cause.HResult == unchecked((int)0x80040154) ? Text.MediaRemoved
+                        : cause.HResult == unchecked((int)0x80070422) ? Text.MediaServiceOff
+                        : Text.MediaUnavailable);
                     wake.WaitOne(30000);
                 }
             }
+            string lastTickError = null;
             while (!stopping)
             {
                 try
                 {
                     Tick();
+                    lastTickError = null;
                 }
                 catch (Exception e)
                 {
-                    Log.Write("Error: " + e);
+                    // The same error every second would bury the log: once until it changes.
+                    var error = e.ToString();
+                    if (error != lastTickError) Log.Write("Error: " + error);
+                    lastTickError = error;
                 }
-                wake.WaitOne(1000);
+                wake.WaitOne(500);
             }
             if (discord.IsConnected)
             {
@@ -179,10 +211,24 @@ namespace Nowcast
             if (!discord.IsConnected) return;
 
             var key = track == null ? "none" : track.Key;
-            var start = track == null ? null : StartedAt(track);
+            // The cover is looked for as soon as the track is seen, even when its
+            // status has to wait for its turn. The status itself never waits for it.
+            if (track != null && settings.Covers)
+            {
+                if (seenKey != key)
+                {
+                    seenKey = key;
+                    seenAt = DateTime.Now;
+                }
+                Covers.Find(track, settings.CoverSearch);
+            }
+            var start = track == null ? null : StartFor(track);
             bool? playing = track == null ? (bool?)null : track.IsPlaying;
             // A seek: the start of the track moved by more than 3 seconds.
             var jumped = start.HasValue && sentStart.HasValue && Math.Abs(start.Value - sentStart.Value) > 3000;
+            // At most one seek in 30 s: a player whose timeline reads oddly must
+            // not send the same track over and over.
+            if (jumped && key == sentKey && (DateTime.Now - jumpedAt).TotalSeconds < 30) jumped = false;
             var isResend = resendAt.HasValue && DateTime.Now >= resendAt.Value;
             // A cover that was not there when the track started may have come since.
             var coverCame = key == sentKey && track != null && !sentCover && settings.Covers && Covers.IsDue(key);
@@ -212,10 +258,12 @@ namespace Nowcast
                         activity = Activity.Build(track, start, settings);
                         discord.SetActivity(activity);
                     }
-                    Log.Write("Status: " + Describe(track) + (activity.ContainsKey("assets") ? "" : " (no cover)"));
+                    Log.Write("Status: " + Describe(track) + (activity.ContainsKey("assets") ? "" : " (no cover)") +
+                        (key != sentKey && seenKey == key ? " [" + (int)(DateTime.Now - seenAt).TotalMilliseconds + " ms after the track was seen]" : ""));
                 }
                 shownKey = track == null ? null : key;
                 sentKey = key;
+                if (jumped) jumpedAt = DateTime.Now;
                 sentStart = start;
                 sentPlaying = playing;
                 sentAt = DateTime.Now;
@@ -250,13 +298,31 @@ namespace Nowcast
         }
 
         // When the track started, Unix ms; null when the app gives no length.
-        static long? StartedAt(Track track)
+        // Worked out again only when the app reports something new: the Yandex
+        // Music app keeps one position while it plays, the start worked out
+        // from the clock crept on a second a second, every 4 s the status went
+        // again as a seek, and Discord stopped passing it on to anyone else.
+        long? StartFor(Track track)
         {
             if (track.Duration <= 0) return null;
+            var same = track.Key == timelineKey && track.IsPlaying == timelinePlaying;
+            if (same && timelineStart.HasValue && track.Position == timelinePosition && track.UpdatedAt == timelineUpdated) return timelineStart;
+            // A new position under the old time: the time is stale, the position is as of now.
+            var updatedAt = same && track.UpdatedAt == timelineUpdated ? 0 : track.UpdatedAt;
+            timelineKey = track.Key;
+            timelinePlaying = track.IsPlaying;
+            timelinePosition = track.Position;
+            timelineUpdated = track.UpdatedAt;
+            timelineStart = StartedAt(track, updatedAt);
+            return timelineStart;
+        }
+
+        static long? StartedAt(Track track, long updatedAt)
+        {
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var position = track.Position * 1000;
-            // The position is as of UpdatedAt; it has played on since.
-            if (track.IsPlaying && track.UpdatedAt > 0) position += Math.Max(0, now - track.UpdatedAt);
+            // The position is as of updatedAt; it has played on since.
+            if (track.IsPlaying && updatedAt > 0) position += Math.Max(0, now - updatedAt);
             position = Math.Min(position, track.Duration * 1000);
             return now - (long)position;
         }

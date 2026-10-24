@@ -32,6 +32,8 @@ namespace Nowcast
         // Album art from the iTunes search when the track is found there.
         public bool CoverSearch = true;
         public bool Buttons = true;
+        // No caption under the lines of the status: neither the album nor the source.
+        public bool HideAlbum = false;
         public bool CheckUpdates = true;
         public string Image = "";
         public List<string> Hide = new List<string>();
@@ -71,6 +73,7 @@ namespace Nowcast
                 "  \"covers\": " + json.Serialize(Covers),
                 "  \"coverSearch\": " + json.Serialize(CoverSearch),
                 "  \"buttons\": " + json.Serialize(Buttons),
+                "  \"hideAlbum\": " + json.Serialize(HideAlbum),
                 "  \"checkUpdates\": " + json.Serialize(CheckUpdates),
                 "  \"image\": " + json.Serialize(Image),
                 "  \"hide\": " + json.Serialize(Hide),
@@ -140,6 +143,7 @@ namespace Nowcast
             Covers = Get(values, "covers", Covers);
             CoverSearch = Get(values, "coverSearch", CoverSearch);
             Buttons = Get(values, "buttons", Buttons);
+            HideAlbum = Get(values, "hideAlbum", HideAlbum);
             CheckUpdates = Get(values, "checkUpdates", CheckUpdates);
             Image = Get<string>(values, "image") ?? Image;
 

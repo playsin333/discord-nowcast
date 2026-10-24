@@ -1,43 +1,63 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Net.Http;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 
 namespace Nowcast
 {
-    // The cover: the album art from the iTunes search when the same artist and
-    // title are found there, a link Discord shows as is. Otherwise the picture
-    // the player handed to Windows; Discord only shows pictures by URL, so it
-    // goes to a temporary file host: uguu.se, x0.at or litterbox.catbox.moe.
+    // The cover: the picture the player handed to Windows, the same one its own
+    // flyout shows. Discord only shows pictures by URL, so it goes to a
+    // temporary file host (Hosts). Only when the player gives no picture, or
+    // no host takes it, the album art from the iTunes search is used, if the
+    // same artist and title are found there.
     static class Covers
     {
-        static readonly HttpClient http = Client();
-
-        // Hosts behind a firewall turn away requests that do not say what sends them.
-        static HttpClient Client()
-        {
-            var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "discord-nowcast/" + Program.Version);
-            client.DefaultRequestHeaders.ExpectContinue = false;
-            return client;
-        }
         static readonly Dictionary<string, string> cache = new Dictionary<string, string>();
         // Tracks without a cover yet: when to look again and how many looks are left.
         static readonly Dictionary<string, DateTime> retryAt = new Dictionary<string, DateTime>();
         static readonly Dictionary<string, int> triesLeft = new Dictionary<string, int>();
         // Tracks already looked up in iTunes: one search per track.
         static readonly HashSet<string> searched = new HashSet<string>();
+
+        // What was last taken from each player: its track, a fingerprint of the
+        // picture and the album. Right after a track changes Windows can still
+        // hand over the previous track's picture; this is how that is noticed.
+        class Seen
+        {
+            public string Key;
+            public string Print;
+            public string Album;
+        }
+
+        static readonly Dictionary<string, Seen> lastByApp = new Dictionary<string, Seen>();
+        // Times a track's picture was the same as the previous track's.
+        static readonly Dictionary<string, int> staleLooks = new Dictionary<string, int>();
+        // Times a track had no picture from the player at all.
+        static readonly Dictionary<string, int> noPicture = new Dictionary<string, int>();
+        // Tracks the player has a picture for: their cover comes as soon as an upload works.
+        static readonly HashSet<string> hasPicture = new HashSet<string>();
+        // How many times, a second apart, to look for the player's picture before
+        // turning to iTunes: browsers hand it over a few seconds after the track starts.
+        const int PictureLooks = 5;
+
+        // Raised when a lookup is done, so that the status goes out at once and
+        // does not wait for the engine's next round.
+        public static event Action Ready;
+
+        static void Notify()
+        {
+            var handler = Ready;
+            if (handler != null) handler();
+        }
         // Lookups and uploads under way. They run in the background: a slow
         // host held the whole status back for up to a minute.
         static readonly Dictionary<string, Task<string>> pending = new Dictionary<string, Task<string>>();
 
         // The URL of the track's cover, or null when there is none yet; the
         // status goes without it and gets it when the lookup is done.
-        // search: look in iTunes first.
+        // search: look in iTunes when the player has no picture of its own.
         public static string Find(Track track, bool search)
         {
             string url;
@@ -53,7 +73,8 @@ namespace Nowcast
                     cache[key] = job.Result;
                     return job.Result;
                 }
-                Later(key, 10);
+                // With the player's picture in hand the upload is tried again soon.
+                Later(key, hasPicture.Contains(key) ? 2 : 10);
                 return null;
             }
             if (!IsDue(key)) return null;
@@ -63,8 +84,10 @@ namespace Nowcast
                 retryAt.Clear();
                 triesLeft.Clear();
                 searched.Clear();
+                staleLooks.Clear();
+                noPicture.Clear();
+                hasPicture.Clear();
             }
-            var isSearch = search && searched.Add(key);
             byte[] image;
             try
             {
@@ -76,35 +99,90 @@ namespace Nowcast
                 Log.Write("Cover not read: " + Message(e));
                 image = null;
             }
-            if (!isSearch && image == null)
+
+            if (image != null)
             {
-                // Browsers hand the picture to Windows a few seconds after
-                // the track starts, so no cover now does not mean none.
-                Later(key, 3);
+                var print = CoverImage.Fingerprint(image);
+                if (IsStale(track, print))
+                {
+                    Later(key, 1);
+                    return null;
+                }
+                // The cover will come as soon as an upload works: many tries, not ten.
+                // On the first one iTunes may stand in when no host takes the picture.
+                var isFirst = hasPicture.Add(key);
+                if (isFirst) triesLeft[key] = 40;
+                var orITunes = isFirst && search && searched.Add(key);
+                lastByApp[track.App] = new Seen { Key = key, Print = print, Album = track.Album };
+                Start(key, () => FromPlayer(track, image, orITunes));
                 return null;
             }
-            pending[key] = Task.Run(() => Look(track, isSearch, image));
+
+            // The player has no picture, or has not handed it over yet. Look again
+            // every second for a few seconds before turning to iTunes, whose
+            // art can belong to another release.
+            int looks;
+            noPicture.TryGetValue(key, out looks);
+            noPicture[key] = ++looks;
+            if (search && looks >= PictureLooks && searched.Add(key))
+            {
+                Start(key, () => FromITunes(track));
+                return null;
+            }
+            Later(key, looks < PictureLooks ? 1 : 3);
             return null;
         }
 
-        // In the background: the iTunes art, else the player's picture uploaded.
-        static string Look(Track track, bool search, byte[] image)
+        // Runs a lookup in the background and tells the engine when it is done.
+        static void Start(string key, Func<string> work)
         {
-            if (search)
-            {
-                var url = Search(track);
-                if (url != null) return url;
-            }
-            if (image == null) return null;
+            var task = Task.Run(work);
+            pending[key] = task;
+            task.ContinueWith(t => Notify());
+        }
+
+        // In the background: the player's picture, made ready and uploaded.
+        // orITunes: when no host takes it, the album art from iTunes instead
+        // (a host that bans the IP or is down left the status with no cover).
+        static string FromPlayer(Track track, byte[] image, bool orITunes)
+        {
+            var begin = DateTime.Now;
             try
             {
-                return Upload(image);
+                var url = Hosts.Upload(CoverImage.Prepare(image));
+                Log.Write("Cover from the player: " + Engine.Describe(track) + " " + url + " (" + (int)(DateTime.Now - begin).TotalMilliseconds + " ms)");
+                return url;
             }
             catch (Exception e)
             {
                 Log.Write("Cover not uploaded, will try again: " + Message(e));
-                return null;
+                return orITunes ? FromITunes(track) : null;
             }
+        }
+
+        // In the background: the album art from iTunes.
+        static string FromITunes(Track track)
+        {
+            var url = Search(track);
+            if (url != null) Log.Write("Cover from iTunes: " + Engine.Describe(track) + " " + url);
+            return url;
+        }
+
+        // Whether the picture is still the previous track's: the title has
+        // changed but Windows has not replaced the picture yet. Tracks of one
+        // album share a picture and are taken at once; for others the picture
+        // is read again a few times before the two are believed to be the same.
+        static bool IsStale(Track track, string print)
+        {
+            Seen before;
+            if (!lastByApp.TryGetValue(track.App, out before) || before.Key == track.Key || before.Print != print) return false;
+            if (track.Album != "" && string.Equals(before.Album, track.Album, StringComparison.OrdinalIgnoreCase)) return false;
+            int looks;
+            staleLooks.TryGetValue(track.Key, out looks);
+            staleLooks[track.Key] = ++looks;
+            if (looks > 4) return false;
+            Log.Write("The picture of " + Engine.Describe(track) + " is still the previous track's, looking again");
+            return true;
         }
 
         // The album art for the same artist and title in the iTunes search, or
@@ -122,7 +200,7 @@ namespace Nowcast
             {
                 try
                 {
-                    var text = http.GetStringAsync("https://itunes.apple.com/search?entity=song&limit=10&country=" + country + "&term=" + term).Result;
+                    var text = Hosts.Http.GetStringAsync("https://itunes.apple.com/search?entity=song&limit=10&country=" + country + "&term=" + term).Result;
                     var reply = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(text);
                     foreach (Dictionary<string, object> result in (ArrayList)reply["results"])
                     {
@@ -175,125 +253,6 @@ namespace Nowcast
             if (!triesLeft.TryGetValue(key, out left)) left = 10;
             triesLeft[key] = left - 1;
             retryAt[key] = DateTime.Now.AddSeconds(seconds);
-        }
-
-        // Every host is tried for a cover, in this order; one that failed
-        // lately goes last, so a cover does not wait for it to time out first.
-        // litterbox is the last: since October 2026 it answers "412 No file!"
-        // to every upload, its own site's included.
-        static readonly string[] hosts = { "uguu.se", "x0.at", "litterbox" };
-        static readonly DateTime[] downUntil = new DateTime[hosts.Length];
-
-        static string Upload(byte[] image)
-        {
-            Exception last = null;
-            for (var pass = 0; pass < 2; pass++)
-            {
-                for (var i = 0; i < hosts.Length; i++)
-                {
-                    // First the hosts that work, then the ones that failed lately.
-                    if ((DateTime.Now < downUntil[i]) != (pass == 1)) continue;
-                    try
-                    {
-                        return i == 0 ? ToUguu(image) : i == 1 ? ToX0(image) : ToLitterbox(image);
-                    }
-                    catch (Exception e)
-                    {
-                        Log.Write(hosts[i] + " failed: " + Message(e));
-                        downUntil[i] = DateTime.Now.AddMinutes(10);
-                        last = e;
-                    }
-                }
-            }
-            throw last;
-        }
-
-        // litterbox.catbox.moe: kept for three days.
-        static string ToLitterbox(byte[] image)
-        {
-            var fields = new Dictionary<string, string> { { "reqtype", "fileupload" }, { "time", "72h" } };
-            var text = Post("https://litterbox.catbox.moe/resources/internals/api.php", Form(fields, "fileToUpload", image)).Trim();
-            if (!text.StartsWith("https://") || text.Contains(" ")) throw new InvalidOperationException(Short(text));
-            return text;
-        }
-
-        // x0.at: kept for 3 to 100 days, longer for small files.
-        static string ToX0(byte[] image)
-        {
-            var text = Post("https://x0.at/", Form(new Dictionary<string, string>(), "file", image)).Trim();
-            if (!text.StartsWith("https://") || text.Contains(" ")) throw new InvalidOperationException(Short(text));
-            return text;
-        }
-
-        // uguu.se: kept for three hours, enough for a track; Discord keeps its own copy.
-        static string ToUguu(byte[] image)
-        {
-            var text = Post("https://uguu.se/upload", Form(new Dictionary<string, string>(), "files[]", image));
-            try
-            {
-                var reply = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(text);
-                var files = (ArrayList)reply["files"];
-                var url = (string)((Dictionary<string, object>)files[0])["url"];
-                if (url.StartsWith("https://")) return url;
-            }
-            catch (Exception)
-            {
-            }
-            throw new InvalidOperationException(Short(text));
-        }
-
-        static string Post(string url, HttpContent form)
-        {
-            using (form)
-            {
-                var response = http.PostAsync(url, form).Result;
-                var text = response.Content.ReadAsStringAsync().Result;
-                if (!response.IsSuccessStatusCode) throw new InvalidOperationException((int)response.StatusCode + " " + Short(text));
-                return text;
-            }
-        }
-
-        // multipart/form-data written by hand, as a browser sends it: the one
-        // MultipartFormDataContent writes (a quoted boundary, an extra
-        // filename*) is not understood by every server.
-        static HttpContent Form(Dictionary<string, string> fields, string fileField, byte[] image)
-        {
-            var boundary = "----nowcast" + Guid.NewGuid().ToString("N");
-            var head = new StringBuilder();
-            foreach (var pair in fields)
-            {
-                head.Append("--" + boundary + "\r\n");
-                head.Append("Content-Disposition: form-data; name=\"" + pair.Key + "\"\r\n\r\n");
-                head.Append(pair.Value + "\r\n");
-            }
-            head.Append("--" + boundary + "\r\n");
-            head.Append("Content-Disposition: form-data; name=\"" + fileField + "\"; filename=\"" + (IsPng(image) ? "cover.png" : "cover.jpg") + "\"\r\n");
-            head.Append("Content-Type: " + (IsPng(image) ? "image/png" : "image/jpeg") + "\r\n\r\n");
-            var start = Encoding.UTF8.GetBytes(head.ToString());
-            var end = Encoding.UTF8.GetBytes("\r\n--" + boundary + "--\r\n");
-            var body = new byte[start.Length + image.Length + end.Length];
-            start.CopyTo(body, 0);
-            image.CopyTo(body, start.Length);
-            end.CopyTo(body, start.Length + image.Length);
-            var content = new ByteArrayContent(body);
-            content.Headers.TryAddWithoutValidation("Content-Type", "multipart/form-data; boundary=" + boundary);
-            return content;
-        }
-
-        // PNG starts with 0x89 'P'; players otherwise give JPEG.
-        static bool IsPng(byte[] image)
-        {
-            return image.Length > 1 && image[0] == 0x89 && image[1] == 0x50;
-        }
-
-        // An error page's title or heading, or the start of the reply: never
-        // the whole page in the log.
-        static string Short(string text)
-        {
-            var title = Regex.Match(text, "<title>(.*?)</title>|<h1>(.*?)</h1>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            text = title.Success ? title.Groups[1].Value + title.Groups[2].Value : text;
-            text = Regex.Replace(text, @"\s+", " ").Trim();
-            return text.Length > 120 ? text.Substring(0, 120) + "…" : text;
         }
 
         static string Message(Exception e)

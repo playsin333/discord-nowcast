@@ -17,7 +17,7 @@ namespace Nowcast
     static class Program
     {
         // Raise with every release, together with a CHANGELOG.md entry.
-        public const string Version = "1.4.12";
+        public const string Version = "1.4.13";
         public const string Repo = "playsin333/discord-nowcast";
         // The project's Discord server: questions, bugs, screenshots of the status.
         public const string DiscordInvite = "https://discord.gg/pHzmvghmJR";
@@ -28,6 +28,11 @@ namespace Nowcast
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            // Uploads of covers go out at once and over connections kept for the next track.
+            ServicePointManager.Expect100Continue = false;
+            ServicePointManager.UseNagleAlgorithm = false;
+            ServicePointManager.DefaultConnectionLimit = 16;
+            ServicePointManager.MaxServicePointIdleTime = 10 * 60 * 1000;
 
             bool isUpdate = args.Contains("--updated");
             Updater.CleanUp();
