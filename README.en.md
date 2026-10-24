@@ -24,11 +24,11 @@ Yandex Music, Spotify, SoundCloud, VK, Telegram, YouTube in a browser, AIMP, loc
 
 Your profile and the server member list show **Listening to SoundCloud**, **Listening to Yandex Music**, and for video **Watching YouTube** or **Watching Twitch**:
 
-- the artist and the track title (on Twitch, the channel and the stream title);
-- where it plays: Yandex Music, Telegram, SoundCloud, Chrome;
+- the track title, the artist below it, and the album as a third line when there is one (on Twitch, the stream title and the channel);
+- where it plays, in the header: **Listening to SoundCloud**, **Listening to AIMP**; for players without a Discord application of their own (VLC, a browser on an unknown site) as a line of its own;
 - the cover art, the same picture the player shows;
 - a progress bar, when the app reports the track length;
-- a **Listen on SoundCloud** button (or Yandex Music, Spotify…) that opens the track for whoever clicks it.
+- a **Listen on SoundCloud** button (or Spotify, YouTube…; **Find on YouTube** for Yandex Music and Telegram) that finds the track for whoever clicks it.
 
 When the music is paused or stops, the status clears itself.
 
@@ -104,7 +104,7 @@ Windows already knows what is playing: it is the track card that pops up when yo
 - **Source name.** Taken from the app's ID. A site installed as an app (SoundCloud or YouTube Music via *Install* in Chrome or Edge) is named as in the Start menu. In a regular browser tab the site is told by the window title: the window whose title holds the track is searched for YouTube, Twitch, SoundCloud and the rest. So the status says SoundCloud, not Chrome.
 - **"Listening to SoundCloud".** Discord puts the name of the application that sent the status after "Listening to". So each service has a Discord application of its own, and discord-nowcast reconnects to the right one when the source changes. YouTube and Twitch go out as "Watching", except YouTube music channels ("Artist - Topic" and VEVO): those read "Listening to YouTube".
 - **Cover art.** It is the picture the player hands to Windows along with the track, the same one the volume flyout shows, so the status never has another track's cover. If Windows still holds the previous track's picture, that is noticed and the picture is read again. When a player puts its logo under the cover on a transparent strip (Spotify does), the strip is cut off and the status has the cover alone. Discord only shows pictures by URL, so it is uploaded to a temporary host: [uguu.se](https://uguu.se), or [x0.at](https://x0.at) or [litterbox.catbox.moe](https://litterbox.catbox.moe) when it is down. If the player gives no picture, or no host takes it, the track is looked up in the open iTunes catalog: when the same artist and title are there, the album art is used. Failing that, Discord shows the application icon. The status of a new track does not wait for its cover: it goes at once, and the cover follows a couple of seconds later. To keep the upload quick, the picture is scaled down to 300 pixels and saved as a JPEG (when nothing in it is transparent), and when a host answers slowly, the next one joins in at once.
-- **The button.** Players do not tell Windows the track's link, so "Listen on …" opens a search for the track in the same service; for Telegram and browsers, a YouTube search. Discord does not let you click your own buttons, only other people's.
+- **The button.** Players do not tell Windows the track's link, so "Listen on …" opens a search for the track in the same service; for Yandex Music, Telegram and browsers, a YouTube search (with a Yandex Music link Discord does not show the status to others). Discord does not let you click your own buttons, only other people's.
 - **Rate limit.** Discord accepts at most five updates per 20 seconds, so the status changes at most once every four seconds.
 
 ## Limitations
