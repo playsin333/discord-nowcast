@@ -11,19 +11,12 @@ namespace Nowcast
     {
         // What the member list shows after "Listening to", in the order of the list.
         static readonly string[] inListValues = { "source", "artist", "title", "app" };
+        // Where the cover comes from, in the order of the list.
+        static readonly string[] coverValues = { "player", "itunes", "none" };
 
         readonly Engine engine;
-        readonly ComboBox inList = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            DrawMode = DrawMode.OwnerDrawFixed,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Theme.Field,
-            ForeColor = Theme.Text,
-            Width = 320,
-        };
-        readonly Theme.CheckBox covers = new Theme.CheckBox { Text = Strings.CoversOption };
-        readonly Theme.CheckBox coverSearch = new Theme.CheckBox { Text = Strings.CoverSearchOption, Margin = new Padding(20, 3, 3, 3) };
+        readonly ComboBox inList = Choices();
+        readonly ComboBox coverSource = Choices();
         readonly Theme.CheckBox buttons = new Theme.CheckBox { Text = Strings.ButtonsOption };
         readonly Theme.CheckBox showPaused = new Theme.CheckBox { Text = Strings.ShowPausedOption };
         readonly Theme.CheckBox hideAlbum = new Theme.CheckBox { Text = Strings.HideAlbumOption };
@@ -60,13 +53,15 @@ namespace Nowcast
 
             inList.Items.AddRange(new object[] { Strings.InListSource, Strings.InListArtist, Strings.InListTitle, Strings.InListApp });
             inList.DrawItem += DrawChoice;
+            coverSource.Items.AddRange(new object[] { Strings.CoverPlayer, Strings.CoverITunes, Strings.CoverNone });
+            coverSource.DrawItem += DrawChoice;
 
             var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false };
             layout.Controls.Add(Heading(Strings.StatusHeading));
             layout.Controls.Add(Note(Strings.InListLabel));
             layout.Controls.Add(inList);
-            layout.Controls.Add(covers);
-            layout.Controls.Add(coverSearch);
+            layout.Controls.Add(Note(Strings.CoverLabel));
+            layout.Controls.Add(coverSource);
             layout.Controls.Add(buttons);
             layout.Controls.Add(showPaused);
             layout.Controls.Add(hideAlbum);
@@ -110,12 +105,7 @@ namespace Nowcast
             Fill();
 
             inList.SelectedIndexChanged += delegate { Change(s => s.InList = inListValues[inList.SelectedIndex]); };
-            covers.CheckedChanged += delegate
-            {
-                coverSearch.Enabled = covers.Checked;
-                Change(s => s.Covers = covers.Checked);
-            };
-            coverSearch.CheckedChanged += delegate { Change(s => s.CoverSearch = coverSearch.Checked); };
+            coverSource.SelectedIndexChanged += delegate { Change(s => s.CoverSource = coverValues[coverSource.SelectedIndex]); };
             buttons.CheckedChanged += delegate { Change(s => s.Buttons = buttons.Checked); };
             showPaused.CheckedChanged += delegate { Change(s => s.ShowPaused = showPaused.Checked); };
             hideAlbum.CheckedChanged += delegate { Change(s => s.HideAlbum = hideAlbum.Checked); };
@@ -135,10 +125,8 @@ namespace Nowcast
             var settings = Settings.Load();
             var index = Array.IndexOf(inListValues, settings.InList);
             inList.SelectedIndex = index >= 0 ? index : 0;
-            covers.Checked = settings.Covers;
-            coverSearch.Checked = settings.CoverSearch;
-            // Without covers there is nothing to look up.
-            coverSearch.Enabled = settings.Covers;
+            var cover = Array.IndexOf(coverValues, settings.CoverSource);
+            coverSource.SelectedIndex = cover >= 0 ? cover : 0;
             buttons.Checked = settings.Buttons;
             showPaused.Checked = settings.ShowPaused;
             hideAlbum.Checked = settings.HideAlbum;
@@ -171,7 +159,7 @@ namespace Nowcast
             if (e.Index < 0) return;
             var isSelected = (e.State & DrawItemState.Selected) != 0 && (e.State & DrawItemState.ComboBoxEdit) == 0;
             using (var back = new SolidBrush(isSelected ? Theme.Accent : Theme.Field)) e.Graphics.FillRectangle(back, e.Bounds);
-            TextRenderer.DrawText(e.Graphics, inList.Items[e.Index].ToString(), e.Font, e.Bounds, isSelected ? Color.White : Theme.Text,
+            TextRenderer.DrawText(e.Graphics, ((ComboBox)sender).Items[e.Index].ToString(), e.Font, e.Bounds, isSelected ? Color.White : Theme.Text,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.NoPrefix);
         }
 
@@ -212,6 +200,20 @@ namespace Nowcast
         static Label Note(string text)
         {
             return new Label { Text = text, AutoSize = true, MaximumSize = new Size(330, 0), ForeColor = Theme.Muted };
+        }
+
+        // A dark drop-down list, drawn by DrawChoice.
+        static ComboBox Choices()
+        {
+            return new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                DrawMode = DrawMode.OwnerDrawFixed,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Theme.Field,
+                ForeColor = Theme.Text,
+                Width = 320,
+            };
         }
 
         static LinkLabel Link(string text, EventHandler click)

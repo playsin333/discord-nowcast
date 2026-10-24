@@ -17,7 +17,7 @@ namespace Nowcast
     static class Program
     {
         // Raise with every release, together with a CHANGELOG.md entry.
-        public const string Version = "1.4.13";
+        public const string Version = "1.4.14";
         public const string Repo = "playsin333/discord-nowcast";
         // The project's Discord server: questions, bugs, screenshots of the status.
         public const string DiscordInvite = "https://discord.gg/pHzmvghmJR";

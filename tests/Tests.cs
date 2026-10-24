@@ -18,6 +18,7 @@ namespace Nowcast
         static int Main()
         {
             Run("defaults", Defaults);
+            Run("cover setting from before", CoverSetting);
             Run("sources", SourcesByApp);
             Run("lines of a service", ServiceLines);
             Run("lines of other players", OtherLines);
@@ -26,6 +27,7 @@ namespace Nowcast
             Run("long titles", LongTitles);
             Run("titles from sites", Repair);
             Run("frozen timeline", FrozenTimeline);
+            Run("no length, a position", NoLength);
             Run("cover without Spotify's logo", CoverCrop);
             Console.WriteLine(failed == 0 ? "All passed" : failed + " failed");
             return failed == 0 ? 0 : 1;
@@ -37,8 +39,26 @@ namespace Nowcast
             var settings = new Settings();
             Check(settings.CheckUpdates, "update checks on");
             Check(!settings.HideAlbum, "album shown");
-            Check(settings.Covers && settings.Buttons, "covers and button on");
+            Check(settings.CoverSource == "player" && settings.Buttons, "covers from the player and button on");
             Check(settings.InList == "source", "inList is source");
+        }
+
+        // "covers": false from before the choice is "none"; the new key wins.
+        static void CoverSetting()
+        {
+            var apply = typeof(Settings).GetMethod("Apply", BindingFlags.NonPublic | BindingFlags.Instance);
+            var old = new Settings();
+            apply.Invoke(old, new object[] { new Dictionary<string, object> { { "covers", false } } });
+            Check(old.CoverSource == "none" && !old.Covers, "covers off becomes none");
+            var kept = new Settings();
+            apply.Invoke(kept, new object[] { new Dictionary<string, object> { { "covers", true } } });
+            Check(kept.CoverSource == "player", "covers on becomes player");
+            var chosen = new Settings();
+            apply.Invoke(chosen, new object[] { new Dictionary<string, object> { { "coverSource", "itunes" }, { "covers", false } } });
+            Check(chosen.CoverSource == "itunes", "the choice wins");
+            var odd = new Settings();
+            apply.Invoke(odd, new object[] { new Dictionary<string, object> { { "coverSource", "something" } } });
+            Check(odd.CoverSource == "player", "an unknown value is the default");
         }
 
         static void SourcesByApp()
@@ -75,7 +95,7 @@ namespace Nowcast
 
         static void AlbumLine()
         {
-            var settings = new Settings { Covers = false, Image = "https://example.com/a.png" };
+            var settings = new Settings { CoverSource = "none", Image = "https://example.com/a.png" };
             var track = Track("SoundCloud.exe", "A", "B");
             Check(!Assets(Build(track, settings)).ContainsKey("large_text"), "no album, no line: not the source again");
             track.Album = "Album";
@@ -142,6 +162,25 @@ namespace Nowcast
             Check(Math.Abs((first - seek).Value) > 3000, "a new position is a seek");
         }
 
+        // Telegram gives no length; when it gives a position, the time is right
+        // from midway, a repeat starts it again, and Discord gets no end.
+        static void NoLength()
+        {
+            var engine = (Engine)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Engine));
+            var startFor = typeof(Engine).GetMethod("StartFor", BindingFlags.NonPublic | BindingFlags.Instance);
+            var track = Track("Telegram.exe", "A", "B");
+            Check(startFor.Invoke(engine, new object[] { track }) == null, "no length, no position: no time");
+            track.Position = 95;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var start = (long?)startFor.Invoke(engine, new object[] { track });
+            Check(start.HasValue && Math.Abs(now - start.Value - 95000) < 2000, "started 95 s ago");
+            track.Position = 1;
+            var again = (long?)startFor.Invoke(engine, new object[] { track });
+            Check(again.Value - start.Value > 90000, "a repeat starts the time again");
+            var timestamps = (Dictionary<string, object>)Activity.Build(track, again, new Settings { CoverSource = "none" })["timestamps"];
+            Check(timestamps.ContainsKey("start") && !timestamps.ContainsKey("end"), "start only, no end");
+        }
+
         // Spotify's picture: the artwork with its logo below on a transparent strip.
         static void CoverCrop()
         {
@@ -185,7 +224,7 @@ namespace Nowcast
 
         static Dictionary<string, object> Build(Track track, Settings settings)
         {
-            settings.Covers = false;
+            settings.CoverSource = "none";
             return Activity.Build(track, null, settings);
         }
 

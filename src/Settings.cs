@@ -28,8 +28,13 @@ namespace Nowcast
         // What the member list shows after "Listening to": source, artist, title, app.
         public string InList = "source";
         public bool ShowPaused = false;
-        public bool Covers = true;
-        // Album art from the iTunes search when the track is found there.
+        // Where the cover comes from: "player", the player's picture (iTunes when
+        // it has none or no host takes it); "itunes", the album art from iTunes
+        // (the player's picture when the track is not there; nothing to upload);
+        // "none". Replaced "covers": true/false.
+        public string CoverSource = "player";
+        // With "player": iTunes may stand in. Off keeps the artist and title from
+        // Apple; only in config.json.
         public bool CoverSearch = true;
         public bool Buttons = true;
         // No caption under the lines of the status: neither the album nor the source.
@@ -70,7 +75,7 @@ namespace Nowcast
                 "  \"clientId\": " + json.Serialize(ClientId),
                 "  \"inList\": " + json.Serialize(InList),
                 "  \"showPaused\": " + json.Serialize(ShowPaused),
-                "  \"covers\": " + json.Serialize(Covers),
+                "  \"coverSource\": " + json.Serialize(CoverSource),
                 "  \"coverSearch\": " + json.Serialize(CoverSearch),
                 "  \"buttons\": " + json.Serialize(Buttons),
                 "  \"hideAlbum\": " + json.Serialize(HideAlbum),
@@ -140,7 +145,10 @@ namespace Nowcast
             if (clientId != null && clientId.Trim() != "") ClientId = clientId.Trim();
             InList = Get<string>(values, "inList") ?? InList;
             ShowPaused = Get(values, "showPaused", ShowPaused);
-            Covers = Get(values, "covers", Covers);
+            var source = Get<string>(values, "coverSource");
+            if (source == "player" || source == "itunes" || source == "none") CoverSource = source;
+            // From before the choice: "covers": false.
+            else if (!Get(values, "covers", true)) CoverSource = "none";
             CoverSearch = Get(values, "coverSearch", CoverSearch);
             Buttons = Get(values, "buttons", Buttons);
             HideAlbum = Get(values, "hideAlbum", HideAlbum);
@@ -163,6 +171,11 @@ namespace Nowcast
                     if (pair.Value is string) Names[pair.Key] = (string)pair.Value;
                 }
             }
+        }
+
+        public bool Covers
+        {
+            get { return CoverSource != "none"; }
         }
 
         static T Get<T>(Dictionary<string, object> values, string key) where T : class

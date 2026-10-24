@@ -220,7 +220,7 @@ namespace Nowcast
                     seenKey = key;
                     seenAt = DateTime.Now;
                 }
-                Covers.Find(track, settings.CoverSearch);
+                Covers.Find(track, settings);
             }
             var start = track == null ? null : StartFor(track);
             bool? playing = track == null ? (bool?)null : track.IsPlaying;
@@ -297,14 +297,17 @@ namespace Nowcast
             return settings.Hides(track.App, track.Source.Name);
         }
 
-        // When the track started, Unix ms; null when the app gives no length.
+        // When the track started, Unix ms; null when the app tells neither a
+        // length nor a position. Without a length but with a position (Telegram
+        // may give one) the start is still known: Discord then shows the right
+        // time for a track started midway, and a repeat is a seek back to 0.
         // Worked out again only when the app reports something new: the Yandex
         // Music app keeps one position while it plays, the start worked out
         // from the clock crept on a second a second, every 4 s the status went
         // again as a seek, and Discord stopped passing it on to anyone else.
         long? StartFor(Track track)
         {
-            if (track.Duration <= 0) return null;
+            if (track.Duration <= 0 && track.Position <= 0 && track.UpdatedAt == 0) return null;
             var same = track.Key == timelineKey && track.IsPlaying == timelinePlaying;
             if (same && timelineStart.HasValue && track.Position == timelinePosition && track.UpdatedAt == timelineUpdated) return timelineStart;
             // A new position under the old time: the time is stale, the position is as of now.
@@ -323,7 +326,7 @@ namespace Nowcast
             var position = track.Position * 1000;
             // The position is as of updatedAt; it has played on since.
             if (track.IsPlaying && updatedAt > 0) position += Math.Max(0, now - updatedAt);
-            position = Math.Min(position, track.Duration * 1000);
+            if (track.Duration > 0) position = Math.Min(position, track.Duration * 1000);
             return now - (long)position;
         }
 

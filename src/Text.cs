@@ -47,8 +47,10 @@ namespace Nowcast
         public static readonly string InListArtist = T("Исполнитель", "The artist");
         public static readonly string InListTitle = T("Название трека", "The track title");
         public static readonly string InListApp = T("Название приложения Discord", "The Discord application's name");
-        public static readonly string CoversOption = T("Обложка трека", "Cover art");
-        public static readonly string CoverSearchOption = T("Искать в iTunes, если у плеера нет обложки", "Look in iTunes when the player has no cover");
+        public static readonly string CoverLabel = T("Обложка трека:", "Cover art:");
+        public static readonly string CoverPlayer = T("Из плеера (своя обложка видна)", "From the player (your own cover shows)");
+        public static readonly string CoverITunes = T("Из iTunes (быстрее, без загрузки)", "From iTunes (quicker, no upload)");
+        public static readonly string CoverNone = T("Без обложки", "No cover");
         public static readonly string ButtonsOption = T("Кнопка «Слушать на …»", "\"Listen on …\" button");
         public static readonly string ShowPausedOption = T("Не убирать статус на паузе", "Keep the status on pause");
         public static readonly string HideAlbumOption = T("Убрать альбом", "Hide the album");

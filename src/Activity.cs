@@ -44,7 +44,7 @@ namespace Nowcast
             if (!track.IsPlaying) activity["state"] = Limit(state + " · " + Text.Paused);
 
             var assets = new Dictionary<string, object>();
-            var cover = settings.Covers ? Covers.Find(track, settings.CoverSearch) : null;
+            var cover = settings.Covers ? Covers.Find(track, settings) : null;
             var image = cover ?? (settings.Image != "" ? settings.Image : null);
             if (image != null)
             {
@@ -57,11 +57,10 @@ namespace Nowcast
 
             if (startedAt.HasValue && track.IsPlaying)
             {
-                activity["timestamps"] = new Dictionary<string, object>
-                {
-                    { "start", startedAt.Value },
-                    { "end", startedAt.Value + (long)(track.Duration * 1000) },
-                };
+                // No length: the start alone, and Discord counts the time played.
+                var timestamps = new Dictionary<string, object> { { "start", startedAt.Value } };
+                if (track.Duration > 0) timestamps["end"] = startedAt.Value + (long)(track.Duration * 1000);
+                activity["timestamps"] = timestamps;
             }
 
             var button = Button(track);

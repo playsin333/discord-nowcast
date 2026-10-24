@@ -26,7 +26,8 @@ namespace Nowcast
             foreach (var track in sessions)
             {
                 text.AppendLine("  " + Engine.Describe(track) + " (" + (track.IsPlaying ? "playing" : "paused") +
-                    (track.Duration > 0 ? ", " + (int)track.Position + "/" + (int)track.Duration + " s" : ", no length") +
+                    ", position " + (int)track.Position + " s" + (track.Duration > 0 ? " of " + (int)track.Duration : ", no length") +
+                    (track.UpdatedAt > 0 ? ", updated " + DateTimeOffset.FromUnixTimeMilliseconds(track.UpdatedAt).ToLocalTime().ToString("HH:mm:ss") : ", no update time") +
                     (track.Album != "" ? ", album" : "") + (track.Thumbnail != null ? ", picture" : "") + ") [" + track.App + "]");
             }
             text.AppendLine();

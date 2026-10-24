@@ -57,9 +57,11 @@ namespace Nowcast
 
         // The URL of the track's cover, or null when there is none yet; the
         // status goes without it and gets it when the lookup is done.
-        // search: look in iTunes when the player has no picture of its own.
-        public static string Find(Track track, bool search)
+        // The settings say where from first: the player's picture or iTunes.
+        public static string Find(Track track, Settings settings)
         {
+            var iTunesFirst = settings.CoverSource == "itunes";
+            var search = iTunesFirst || settings.CoverSearch;
             string url;
             var key = track.Key;
             if (cache.TryGetValue(key, out url)) return url;
@@ -98,6 +100,15 @@ namespace Nowcast
             {
                 Log.Write("Cover not read: " + Message(e));
                 image = null;
+            }
+
+            // iTunes first: one search, and the player's picture when the track is
+            // not there. After that it goes on as below, without iTunes.
+            if (iTunesFirst && searched.Add(key))
+            {
+                var picture = image != null && !IsStale(track, CoverImage.Fingerprint(image)) ? image : null;
+                Start(key, () => FromITunes(track) ?? (picture != null ? FromPlayer(track, picture, false) : null));
+                return null;
             }
 
             if (image != null)
