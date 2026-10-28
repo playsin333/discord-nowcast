@@ -40,7 +40,8 @@ namespace Nowcast
         // Where the cover comes from: "player", the player's picture (iTunes when
         // it has none or no host takes it); "itunes", the album art from iTunes
         // (the player's picture when the track is not there; nothing to upload);
-        // "none". Replaced "covers": true/false.
+        // "picture", the picture picked in the settings on every track; "none",
+        // no picture at all. Replaced "covers": true/false.
         public string CoverSource = "player";
         // With "player": iTunes may stand in. Off keeps the artist and title from
         // Apple; only in config.json.
@@ -195,7 +196,7 @@ namespace Nowcast
             InList = Get<string>(values, "inList") ?? InList;
             ShowPaused = Get(values, "showPaused", ShowPaused);
             var source = Get<string>(values, "coverSource");
-            if (source == "player" || source == "itunes" || source == "none") CoverSource = source;
+            if (source == "player" || source == "itunes" || source == "picture" || source == "none") CoverSource = source;
             // From before the choice: "covers": false.
             else if (!Get(values, "covers", true)) CoverSource = "none";
             CoverSearch = Get(values, "coverSearch", CoverSearch);
@@ -228,9 +229,10 @@ namespace Nowcast
             }
         }
 
+        // Whether the track's cover is looked for: from the player or iTunes.
         public bool Covers
         {
-            get { return CoverSource != "none"; }
+            get { return CoverSource == "player" || CoverSource == "itunes"; }
         }
 
         static T Get<T>(Dictionary<string, object> values, string key) where T : class

@@ -97,9 +97,11 @@ namespace Nowcast
 
         // The picture for the status: the track's cover, or until it comes (or
         // when there is none) the picture picked for that, or the settings'
-        // link; null for none.
+        // link; null for none. With "picture" the picked one on every track,
+        // with "none" nothing.
         public static string Image(Track track, Settings settings)
         {
+            if (settings.CoverSource == "none") return null;
             var cover = settings.Covers ? Covers.Find(track, settings) : null;
             if (cover != null) return cover;
             var picked = Covers.FindFile(Settings.FallbackPicturePath);

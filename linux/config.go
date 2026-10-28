@@ -29,7 +29,7 @@ type Settings struct {
 	// What the member list shows after "Listening to": source, artist, title, app.
 	InList     string
 	ShowPaused bool
-	// "player", "itunes" or "none", as on Windows.
+	// "player", "itunes", "picture" (fallbackPicture on every track) or "none", as on Windows.
 	CoverSource  string
 	CoverSearch  bool
 	Buttons      bool
@@ -119,7 +119,7 @@ func (s *Settings) apply(data []byte) error {
 		s.InList = v
 	}
 	s.ShowPaused = boolean("showPaused", s.ShowPaused)
-	if v, _ := str("coverSource"); v == "player" || v == "itunes" || v == "none" {
+	if v, _ := str("coverSource"); v == "player" || v == "itunes" || v == "picture" || v == "none" {
 		s.CoverSource = v
 	} else if !boolean("covers", true) {
 		// From before the choice: "covers": false.
@@ -257,7 +257,8 @@ func (s *Settings) nameKeys() []string {
 	return keys
 }
 
-func (s *Settings) Covers() bool { return s.CoverSource != "none" }
+// Whether the track's cover is looked for: from the player or iTunes.
+func (s *Settings) Covers() bool { return s.CoverSource == "player" || s.CoverSource == "itunes" }
 
 // Whether one's own status is on and has a title to show, one without
 // links and the plain words of casino ads and 18+.

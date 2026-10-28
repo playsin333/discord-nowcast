@@ -89,12 +89,12 @@ Most of these are in the settings window. All of them live in `config.json` in `
 | `clientId` | the Discord application whose name follows "Listening to". Yandex Music, Spotify, SoundCloud, YouTube, YouTube Music, Twitch, VK Music, Apple Music and Telegram have their own; other players share a general one. To always use your own name, create an app at [discord.com/developers/applications](https://discord.com/developers/applications) (**New Application**) and paste its **Application ID** here |
 | `inList` | what the member list shows after "Listening to": `source` where it plays (default; for a service with a Discord application of its own the status lines are the title and the artist, the source is in the "Listening to SoundCloud" header), `artist`, `title`, or `app` for the application name |
 | `showPaused` | `true` keeps the status on pause, marked as paused |
-| `coverSource` | where the cover comes from (in the window: *Cover art*): `player`, the player's picture, or iTunes when the player gives none or no host takes it (default); `itunes`, the album art from iTunes with nothing to upload, or the player's picture when the track is not there (handy when the hosts do not work for you); `none`, no cover |
+| `coverSource` | where the cover comes from (in the window: *Cover art*): `player`, the player's picture, or iTunes when the player gives none or no host takes it (default); `itunes`, the album art from iTunes with nothing to upload, or the player's picture when the track is not there (handy when the hosts do not work for you); `picture`, your own picture on every track (picked in the window under the list); `none`, no cover and no picture |
 | `coverSearch` | `false` with `player`: no iTunes lookup |
 | `buttons` | `false` removes the "Listen on …" button |
 | `hideAlbum` | `true` removes the status's third line with the album (in the window: *Hide the album*) |
 | `checkUpdates` | `false` stops the automatic update check |
-| `image` | a picture URL to show when a track has no cover. Easier: pick a picture in the settings window (*Picture when a track has no cover*); it comes before this link and lives in the `fallback-picture` file next to config.json |
+| `image` | a picture URL to show when a track has no cover. Easier: pick a picture in the settings window under *Cover art*; it comes before this link, and with *My picture on every track* it stands in for all covers and lives in the `fallback-picture` file next to config.json |
 | `own`, `ownType`, `ownTitle`, `ownLine2`, `ownMinutes` | your own status (the *Own status* window): on or off, the type (`listening`, `watching`, `playing`), line 1, line 2, how many minutes it has been going (up to 6000). The picture lives next to it, in the `own-picture` file |
 | `ownPicture`, `fallbackPicture` | Linux only: the path to your own status's picture and to the picture for tracks without a cover |
 | `hide` | apps never to show: `["chrome", "Telegram"]` |

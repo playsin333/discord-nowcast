@@ -12,11 +12,12 @@ namespace Nowcast
         // What the member list shows after "Listening to", in the order of the list.
         static readonly string[] inListValues = { "source", "artist", "title", "app" };
         // Where the cover comes from, in the order of the list.
-        static readonly string[] coverValues = { "player", "itunes", "none" };
+        static readonly string[] coverValues = { "player", "itunes", "picture", "none" };
 
         readonly Engine engine;
         readonly ComboBox inList = Choices();
         readonly ComboBox coverSource = Choices();
+        readonly Label fallbackLabel = Note(Strings.FallbackLabel);
         readonly PicturePicker fallback = new PicturePicker(Settings.FallbackPicturePath, "Fallback picture");
         readonly Theme.CheckBox buttons = new Theme.CheckBox { Text = Strings.ButtonsOption };
         readonly Theme.CheckBox showPaused = new Theme.CheckBox { Text = Strings.ShowPausedOption };
@@ -54,7 +55,7 @@ namespace Nowcast
 
             inList.Items.AddRange(new object[] { Strings.InListSource, Strings.InListArtist, Strings.InListTitle, Strings.InListApp });
             inList.DrawItem += DrawChoice;
-            coverSource.Items.AddRange(new object[] { Strings.CoverPlayer, Strings.CoverITunes, Strings.CoverNone });
+            coverSource.Items.AddRange(new object[] { Strings.CoverPlayer, Strings.CoverITunes, Strings.CoverPicture, Strings.CoverNone });
             coverSource.DrawItem += DrawChoice;
 
             var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false };
@@ -63,7 +64,7 @@ namespace Nowcast
             layout.Controls.Add(inList);
             layout.Controls.Add(Note(Strings.CoverLabel));
             layout.Controls.Add(coverSource);
-            layout.Controls.Add(Note(Strings.FallbackLabel));
+            layout.Controls.Add(fallbackLabel);
             layout.Controls.Add(fallback);
             layout.Controls.Add(buttons);
             layout.Controls.Add(showPaused);
@@ -108,7 +109,11 @@ namespace Nowcast
             Fill();
 
             inList.SelectedIndexChanged += delegate { Change(s => s.InList = inListValues[inList.SelectedIndex]); };
-            coverSource.SelectedIndexChanged += delegate { Change(s => s.CoverSource = coverValues[coverSource.SelectedIndex]); };
+            coverSource.SelectedIndexChanged += delegate
+            {
+                ShowPictureRow();
+                Change(s => s.CoverSource = coverValues[coverSource.SelectedIndex]);
+            };
             buttons.CheckedChanged += delegate { Change(s => s.Buttons = buttons.Checked); };
             showPaused.CheckedChanged += delegate { Change(s => s.ShowPaused = showPaused.Checked); };
             hideAlbum.CheckedChanged += delegate { Change(s => s.HideAlbum = hideAlbum.Checked); };
@@ -130,6 +135,7 @@ namespace Nowcast
             inList.SelectedIndex = index >= 0 ? index : 0;
             var cover = Array.IndexOf(coverValues, settings.CoverSource);
             coverSource.SelectedIndex = cover >= 0 ? cover : 0;
+            ShowPictureRow();
             buttons.Checked = settings.Buttons;
             showPaused.Checked = settings.ShowPaused;
             hideAlbum.Checked = settings.HideAlbum;
@@ -148,6 +154,15 @@ namespace Nowcast
                 sources.Controls.Add(new Label { Text = Strings.NoSessions, AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(0, 3, 0, 0) });
             }
             isLoading = false;
+        }
+
+        // The picture under the cover list: "if a track has no cover", "on every
+        // track", or none at all with "No cover, no picture".
+        void ShowPictureRow()
+        {
+            var value = coverValues[Math.Max(0, coverSource.SelectedIndex)];
+            fallbackLabel.Text = value == "picture" ? Strings.PictureLabel : Strings.FallbackLabel;
+            fallbackLabel.Visible = fallback.Visible = value != "none";
         }
 
         void AddSource(string name, string app, bool isShown)

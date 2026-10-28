@@ -383,8 +383,11 @@ func (e *Engine) tick() string {
 
 // The picture for the status: the track's cover, or until it comes (or
 // when there is none) the picture picked for that, or the settings' link;
-// "" for none.
+// "" for none. With "picture" the picked one on every track, with "none" nothing.
 func (e *Engine) image(track *Track, settings *Settings) string {
+	if settings.CoverSource == "none" {
+		return ""
+	}
 	if settings.Covers() {
 		if cover := e.covers.Find(track, settings); cover != "" {
 			return cover

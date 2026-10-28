@@ -379,8 +379,16 @@ func TestFallbackPicture(t *testing.T) {
 	if got := r.cover(track, s, 10); got != "https://i.scdn.co/image/x" || e.image(track, s) != got {
 		t.Fatalf("then the cover: %q", got)
 	}
-	os.Remove(s.FallbackPicture)
+	s.CoverSource = "picture"
+	if got := e.image(track, s); !strings.HasPrefix(got, "https://host/") {
+		t.Fatalf("\"picture\": the picked one, not the cover: %q", got)
+	}
 	s.CoverSource = "none"
+	if got := e.image(track, s); got != "" {
+		t.Fatalf("\"none\": nothing at all: %q", got)
+	}
+	os.Remove(s.FallbackPicture)
+	s.CoverSource = "picture"
 	if got := e.image(song("Other"), s); got != s.Image {
 		t.Fatalf("removed: the settings' link: %q", got)
 	}

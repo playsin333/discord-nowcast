@@ -110,7 +110,7 @@ namespace Nowcast
 
         static void AlbumLine()
         {
-            var settings = new Settings { CoverSource = "none", Image = "https://example.com/a.png" };
+            var settings = new Settings { Image = "https://example.com/a.png" };
             var track = Track("SoundCloud.exe", "A", "B");
             Check(!Assets(Build(track, settings)).ContainsKey("large_text"), "no album, no line: not the source again");
             track.Album = "Album";
@@ -450,8 +450,11 @@ namespace Nowcast
                     picture = new byte[] { 4 };
                     Cover(track, settings, 10);
                     Check(Activity.Image(track, settings).StartsWith("https://host/4"), "then the cover");
+                    var always = new Settings { CoverSource = "picture", Image = "https://example.com/own.png" };
+                    Check(Activity.Image(track, always).StartsWith("https://host/9"), "\"picture\": the picked one, not the cover");
+                    Check(Activity.Image(track, new Settings { CoverSource = "none", Image = "https://example.com/own.png" }) == null, "\"none\": nothing at all");
                     File.Delete(path);
-                    Check(Activity.Image(Track("SoundCloud.exe", "C", "D"), new Settings { CoverSource = "none", Image = "https://example.com/own.png" }) == "https://example.com/own.png", "removed: the settings' link");
+                    Check(Activity.Image(Track("SoundCloud.exe", "C", "D"), always) == "https://example.com/own.png", "removed: the settings' link");
                 }
                 finally
                 {
@@ -616,7 +619,8 @@ namespace Nowcast
 
         static Dictionary<string, object> Build(Track track, Settings settings)
         {
-            settings.CoverSource = "none";
+            // No lookups: the settings' link stands for the picture.
+            settings.CoverSource = "picture";
             return Activity.Build(track, null, settings);
         }
 
