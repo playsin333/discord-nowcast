@@ -30,10 +30,12 @@ type Settings struct {
 	InList     string
 	ShowPaused bool
 	// "player", "itunes", "picture" (fallbackPicture on every track) or "none", as on Windows.
-	CoverSource  string
-	CoverSearch  bool
-	Buttons      bool
-	HideAlbum    bool
+	CoverSource string
+	CoverSearch bool
+	Buttons     bool
+	HideAlbum   bool
+	// The line of the song sung now in the status, from lrclib.net.
+	Lyrics       bool
 	CheckUpdates bool
 	Image        string
 	Own          bool
@@ -128,6 +130,7 @@ func (s *Settings) apply(data []byte) error {
 	s.CoverSearch = boolean("coverSearch", s.CoverSearch)
 	s.Buttons = boolean("buttons", s.Buttons)
 	s.HideAlbum = boolean("hideAlbum", s.HideAlbum)
+	s.Lyrics = boolean("lyrics", s.Lyrics)
 	s.CheckUpdates = boolean("checkUpdates", s.CheckUpdates)
 	if v, ok := str("image"); ok {
 		s.Image = v
@@ -222,6 +225,7 @@ func (s *Settings) Save() error {
 		`  "coverSearch": ` + encode(s.CoverSearch),
 		`  "buttons": ` + encode(s.Buttons),
 		`  "hideAlbum": ` + encode(s.HideAlbum),
+		`  "lyrics": ` + encode(s.Lyrics),
 		`  "checkUpdates": ` + encode(s.CheckUpdates),
 		`  "image": ` + encode(s.Image),
 		`  "own": ` + encode(s.Own),

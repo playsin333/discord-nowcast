@@ -78,6 +78,7 @@ namespace Nowcast
         public static readonly string ButtonsOption = T("Кнопка «Слушать на …»", "\"Listen on …\" button");
         public static readonly string ShowPausedOption = T("Не убирать статус на паузе", "Keep the status on pause");
         public static readonly string HideAlbumOption = T("Убрать альбом", "Hide the album");
+        public static readonly string LyricsOption = T("Текст песни в статусе (строка, которую поют)", "Lyrics in the status (the line being sung)");
         public static readonly string SourcesNote = T("Приложения, которые сейчас играют. Снимите галочку, чтобы не показывать его в статусе.", "Apps playing now. Clear a box to keep that app out of the status.");
         public static readonly string ProgramHeading = T("Программа", "The program");
         public static readonly string CheckUpdatesOption = T("Проверять обновления", "Check for updates");

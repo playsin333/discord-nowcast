@@ -163,12 +163,12 @@ func trackOf(source *SourceInfo, artist, title string) *Track {
 func TestActivityLines(t *testing.T) {
 	s := defaultSettings()
 	spotify := resolveSource(PlayerID{Bus: "spotify"}, s)
-	a := buildActivity(trackOf(spotify, "LiL PEEP", "driveway"), nil, s, "")
+	a := buildActivity(trackOf(spotify, "LiL PEEP", "driveway"), nil, s, "", "")
 	if a["details"] != "driveway" || a["state"] != "LiL PEEP" || a["status_display_type"] != 0 || a["type"] != 2 {
 		t.Errorf("a service's own application: %v", a)
 	}
 	vlc := resolveSource(PlayerID{Bus: "vlc"}, s)
-	a = buildActivity(trackOf(vlc, "Artist", "Song"), nil, s, "")
+	a = buildActivity(trackOf(vlc, "Artist", "Song"), nil, s, "", "")
 	if a["details"] != "Artist — Song" || a["state"] != "VLC" || a["status_display_type"] != 1 {
 		t.Errorf("the general application: %v", a)
 	}
@@ -177,31 +177,31 @@ func TestActivityLines(t *testing.T) {
 	}
 	track := trackOf(vlc, "Artist", "Song")
 	track.Album = "Album"
-	a = buildActivity(track, nil, s, "https://host/1")
+	a = buildActivity(track, nil, s, "https://host/1", "")
 	if a["assets"].(object)["large_text"] != "Album" {
 		t.Errorf("the album: %v", a["assets"])
 	}
 	s.HideAlbum = true
-	if _, ok := buildActivity(track, nil, s, "https://host/1")["assets"].(object)["large_text"]; ok {
+	if _, ok := buildActivity(track, nil, s, "https://host/1", "")["assets"].(object)["large_text"]; ok {
 		t.Error("hidden album")
 	}
 	track.IsPlaying = false
-	if a := buildActivity(track, nil, s, ""); a["state"] != "VLC · paused" {
+	if a := buildActivity(track, nil, s, "", ""); a["state"] != "VLC · paused" {
 		t.Errorf("paused: %v", a["state"])
 	}
 	youtube := siteSource("https://www.youtube.com/", "")
-	if a := buildActivity(trackOf(youtube, "Channel", "Video"), nil, s, ""); a["type"] != 3 {
+	if a := buildActivity(trackOf(youtube, "Channel", "Video"), nil, s, "", ""); a["type"] != 3 {
 		t.Error("YouTube is Watching")
 	}
 	start := int64(1000)
 	track = trackOf(vlc, "A", "B")
 	track.Duration = 200
-	timestamps := buildActivity(track, &start, s, "")["timestamps"].(object)
+	timestamps := buildActivity(track, &start, s, "", "")["timestamps"].(object)
 	if timestamps["start"] != int64(1000) || timestamps["end"] != int64(201000) {
 		t.Errorf("timestamps: %v", timestamps)
 	}
 	track.Duration = 0
-	if _, ok := buildActivity(track, &start, s, "")["timestamps"].(object)["end"]; ok {
+	if _, ok := buildActivity(track, &start, s, "", "")["timestamps"].(object)["end"]; ok {
 		t.Error("no length: start only")
 	}
 }
@@ -218,7 +218,7 @@ func TestButton(t *testing.T) {
 		t.Errorf("SoundCloud's own search: %v", b)
 	}
 	long := trackOf(yandex, strings.Repeat("Исполнитель ", 20), strings.Repeat("Очень длинное название трека ", 20))
-	a := buildActivity(long, nil, s, "")
+	a := buildActivity(long, nil, s, "", "")
 	link = a["buttons"].([]object)[0]["url"].(string)
 	if len(link) > 512 {
 		t.Errorf("button link within 512: %d", len(link))
@@ -227,7 +227,7 @@ func TestButton(t *testing.T) {
 		t.Error("title within 128")
 	}
 	emoji := trackOf(yandex, "A", strings.Repeat("a", 126)+"😀😀😀")
-	details := buildActivity(emoji, nil, s, "")["details"].(string)
+	details := buildActivity(emoji, nil, s, "", "")["details"].(string)
 	if units(details) > 128 || !strings.HasSuffix(details, "a…") {
 		t.Errorf("no half of an emoji: %q (%d)", details, units(details))
 	}

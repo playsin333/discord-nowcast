@@ -28,7 +28,10 @@ type Engine struct {
 	jumpedAt    time.Time
 	sentPlaying *bool
 	// The picture in the status now: a cover's link, the settings' own picture, or "".
-	sentImage   string
+	sentImage string
+	// The line of the song in the status now, or "".
+	sentLyric   string
+	lyrics      *Lyrics
 	sentAt      time.Time
 	nextConnect time.Time
 	resendAt    *time.Time
@@ -70,6 +73,7 @@ func newEngine() *Engine {
 	}
 	// A cover that is done does not wait for the next round.
 	e.covers = newCovers(e.Wake)
+	e.lyrics = newLyrics(e.Wake)
 	e.settings = loadSettings()
 	e.settingsSeen = settingsStamp()
 	return e
@@ -324,7 +328,14 @@ func (e *Engine) tick() string {
 	// iTunes cover, or a new link for one the host is about to delete.
 	coverCame := key == e.sentKey && track != nil && image != "" && image != e.sentImage
 	playingChanged := (playing == nil) != (e.sentPlaying == nil) || (playing != nil && *playing != *e.sentPlaying)
-	changed := key != e.sentKey || playingChanged || jumped || isResend || coverCame
+	// The line being sung, when it is wanted: the next one goes out in its
+	// turn, a quick one between two turns is skipped.
+	lyric := ""
+	if track != nil && settings.Lyrics && track.IsPlaying && start != nil && !track.Source.IsVideo {
+		lyric = lyricAt(e.lyrics.Find(track), time.Now().UnixMilli()-*start)
+	}
+	lyricCame := key == e.sentKey && track != nil && lyric != e.sentLyric
+	changed := key != e.sentKey || playingChanged || jumped || isResend || coverCame || lyricCame
 	// Discord takes at most 5 updates per 20 seconds.
 	if !changed || time.Since(e.sentAt) < 4*time.Second {
 		return mediaError
@@ -340,16 +351,18 @@ func (e *Engine) tick() string {
 			logf("Status cleared")
 		}
 	} else {
-		activity := buildActivity(track, start, settings, image)
+		activity := buildActivity(track, start, settings, image, lyric)
 		var complaint string
 		complaint, sendErr = e.discord.SetActivity(activity)
 		if sendErr == nil && complaint != "" && useLinks {
 			// An older Discord may not know the links on the cover and title.
 			useLinks = false
-			activity = buildActivity(track, start, settings, image)
+			activity = buildActivity(track, start, settings, image, lyric)
 			_, sendErr = e.discord.SetActivity(activity)
 		}
-		if sendErr == nil {
+		// A new line of the song every few seconds would bury the log.
+		onlyLyric := lyricCame && key == e.sentKey && !playingChanged && !jumped && !isResend && !coverCame
+		if sendErr == nil && !onlyLyric {
 			note := ""
 			if _, ok := activity["assets"]; !ok {
 				note = " (no cover)"
@@ -372,6 +385,7 @@ func (e *Engine) tick() string {
 	}
 	e.sentKey = key
 	e.sentImage = image
+	e.sentLyric = lyric
 	if jumped {
 		e.jumpedAt = time.Now()
 	}

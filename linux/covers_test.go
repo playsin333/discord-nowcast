@@ -115,6 +115,24 @@ func TestCoverRenewed(t *testing.T) {
 	}
 }
 
+func TestOneHourCoverRenewal(t *testing.T) {
+	r := newRig()
+	r.c.upload = func(data []byte) (Uploaded, error) {
+		n := atomic.AddInt32(&r.uploads, 1)
+		return Uploaded{URL: fmt.Sprintf("https://host/hour/%d", n), Keep: time.Hour}, nil
+	}
+	r.picture = &picture{Data: []byte{7}}
+	s := defaultSettings()
+	track := song("Hour")
+	first := r.cover(track, s, 0)
+	if first == "" || r.cover(track, s, 47*60) != first {
+		t.Fatal("cover remains usable before renewal")
+	}
+	if next := r.cover(track, s, 60); next == "" || next == first || atomic.LoadInt32(&r.uploads) != 2 {
+		t.Fatal("cover must renew at 48 minutes")
+	}
+}
+
 func TestCoverITunes(t *testing.T) {
 	r := newRig()
 	s := defaultSettings()
@@ -300,65 +318,65 @@ func TestPictureFromFile(t *testing.T) {
 }
 
 func TestHosts(t *testing.T) {
-	var got []byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/upload" || r.Header.Get("Content-Type") != "image/png" || !strings.HasPrefix(r.Header.Get("User-Agent"), "discord-nowcast/") {
-			http.Error(w, "bad", 400)
+	var primaryStatus atomic.Int32
+	var primaryCalls, reserveCalls atomic.Int32
+	primaryStatus.Store(503)
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		primaryCalls.Add(1)
+		if status := int(primaryStatus.Load()); status != 200 {
+			message := "unavailable"
+			if status == 403 {
+				message = "Banned"
+			}
+			http.Error(w, message, status)
 			return
 		}
-		got = make([]byte, r.ContentLength)
-		r.Body.Read(got)
-		fmt.Fprintf(w, "%s/abc.png%s", "http://"+r.Host, map[bool]string{true: "?own", false: ""}[r.URL.Query().Get("kind") == "own"])
+		fmt.Fprintf(w, "http://%s/%s.png", r.Host, strings.Repeat("a", 40))
 	}))
-	defer server.Close()
-	saved := ownHost
-	ownHost = server.URL
-	defer func() { ownHost = saved }()
+	defer primary.Close()
+	reserve := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reserveCalls.Add(1)
+		if r.Header.Get("Content-Type") != "image/png" || !strings.HasPrefix(r.Header.Get("User-Agent"), "discord-nowcast/") {
+			http.Error(w, "bad request", 400)
+			return
+		}
+		fmt.Fprintf(w, "http://%s/%s.png", r.Host, strings.Repeat("a", 40))
+	}))
+	defer reserve.Close()
+	savedOwn, savedReserve, savedClock, savedHosts := ownHost, reserveHost, hostNow, hosts
+	ownHost, reserveHost = primary.URL, reserve.URL
+	clock := time.Date(2026, 10, 29, 13, 0, 0, 0, time.UTC)
+	hostNow = func() time.Time { return clock }
+	hosts = []*host{
+		{name: "nowcast", keep: time.Hour, upload: func(image []byte) (string, error) { return toOwn(image, "") }},
+		{name: "vps", keep: time.Hour, upload: func(image []byte) (string, error) { return toManaged(reserveHost, image, "") }},
+	}
+	defer func() { ownHost, reserveHost, hostNow, hosts = savedOwn, savedReserve, savedClock, savedHosts }()
 	image := []byte{0x89, 0x50, 1, 2}
-	url, err := toOwn(image, "")
-	if err != nil || url != server.URL+"/abc.png" || !bytes.Equal(got, image) {
-		t.Fatalf("our host: %q %v", url, err)
+	got, err := upload(image)
+	if err != nil || !strings.HasPrefix(got.URL, reserve.URL) || got.Keep != time.Hour {
+		t.Fatalf("reserve after failure: %+v %v", got, err)
 	}
-	if own, err := uploadOwn(image); err != nil || !strings.HasSuffix(own.URL, "?own") || own.Keep != 48*time.Hour {
-		t.Fatalf("own picture: %+v %v", own, err)
+	if primaryCalls.Load() != 1 || reserveCalls.Load() != 1 || !hosts[0].downUntil.Equal(clock.Add(30*time.Minute)) {
+		t.Fatal("pause must be exactly 30 minutes")
 	}
-
-	// The order: the quickest first, a failed one left out, all failed: the one due back first.
-	now := time.Now()
-	for _, h := range hosts {
-		h.downUntil = time.Time{}
+	clock = clock.Add(30*time.Minute - time.Second)
+	if _, err := upload(image); err != nil || primaryCalls.Load() != 1 || reserveCalls.Load() != 2 {
+		t.Fatal("do not retry Cloudflare before the deadline")
 	}
-	if order := hostOrder(now); len(order) != 2 || order[0].name != "nowcast" {
-		t.Fatal("ours first")
+	clock = clock.Add(time.Second)
+	primaryStatus.Store(200)
+	got, err = uploadOwn(image)
+	if err != nil || !strings.HasPrefix(got.URL, primary.URL) || got.Keep != 6*time.Hour || primaryCalls.Load() != 2 || reserveCalls.Load() != 2 {
+		t.Fatalf("return to recovered Cloudflare: %+v %v", got, err)
 	}
-	hosts[0].downUntil = now.Add(time.Minute)
-	if order := hostOrder(now); len(order) != 1 || order[0].name != "uguu.se" {
-		t.Fatal("a failed host left out")
+	primaryStatus.Store(403)
+	if _, err := uploadOwn(image); err == nil || reserveCalls.Load() != 2 {
+		t.Fatal("ban must not bypass to the reserve")
 	}
-	hosts[1].downUntil = now.Add(2 * time.Minute)
-	if order := hostOrder(now); len(order) != 1 || order[0].name != "nowcast" {
-		t.Fatal("all failed: the one due back first")
-	}
-	for _, h := range hosts {
-		h.downUntil = time.Time{}
-	}
-}
-
-func TestUploadHedge(t *testing.T) {
-	saved := hosts
-	defer func() { hosts = saved }()
-	slow := &host{name: "slow", keep: time.Hour, took: 1, upload: func([]byte) (string, error) {
-		time.Sleep(3 * time.Second)
-		return "https://slow", nil
-	}}
-	quick := &host{name: "quick", keep: time.Hour, took: 2, upload: func([]byte) (string, error) { return "https://quick", nil }}
-	hosts = []*host{slow, quick}
-	hedge = 100 * time.Millisecond
-	defer func() { hedge = 1500 * time.Millisecond }()
-	begin := time.Now()
-	got, err := upload([]byte{1})
-	if err != nil || got.URL != "https://quick" || time.Since(begin) > time.Second {
-		t.Fatalf("the next host starts alongside a slow one: %+v %v", got, err)
+	primaryStatus.Store(503)
+	if _, err := upload(image); err != nil || !hosts[0].downUntil.Equal(clock.Add(30*time.Minute)) {
+		t.Fatal("another failure starts another 30-minute pause")
 	}
 }
 

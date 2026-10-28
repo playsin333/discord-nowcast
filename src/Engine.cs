@@ -31,6 +31,8 @@ namespace Nowcast
         bool? sentPlaying;
         // The picture in the status now: a cover's link, the settings' own picture, or null.
         string sentImage;
+        // The line of the song in the status now, or null.
+        string sentLyric;
         DateTime sentAt = DateTime.MinValue;
         DateTime nextConnect = DateTime.MinValue;
         DateTime? resendAt;
@@ -61,6 +63,7 @@ namespace Nowcast
 
             // A cover that is done does not wait for the next round.
             Covers.Ready += delegate { wake.Set(); };
+            Lyrics.Ready += delegate { wake.Set(); };
         }
 
         public Settings Settings
@@ -247,7 +250,15 @@ namespace Nowcast
             // the track started, one in place of the settings' own picture or of
             // an iTunes cover, or a new link for one the host is about to delete.
             var coverCame = key == sentKey && track != null && image != null && image != sentImage;
-            var changed = key != sentKey || playing != sentPlaying || jumped || isResend || coverCame;
+            // The line being sung, when it is wanted: the next one goes out in
+            // its turn, a quick one between two turns is skipped.
+            string lyric = null;
+            if (track != null && settings.Lyrics && track.IsPlaying && start.HasValue && !track.Source.IsVideo)
+            {
+                lyric = Lyrics.Line(Lyrics.Find(track), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start.Value);
+            }
+            var lyricCame = key == sentKey && track != null && lyric != sentLyric;
+            var changed = key != sentKey || playing != sentPlaying || jumped || isResend || coverCame || lyricCame;
             // Discord takes at most 5 updates per 20 seconds.
             if (!changed || (DateTime.Now - sentAt).TotalSeconds < 4) return;
             if (isResend) resendAt = null;
@@ -261,20 +272,23 @@ namespace Nowcast
                 }
                 else
                 {
-                    var activity = Activity.Build(track, start, settings);
+                    var activity = Activity.Build(track, start, settings, lyric);
                     if (discord.SetActivity(activity) != null && Activity.UseLinks)
                     {
                         // An older Discord may not know the links on the cover and title.
                         Activity.UseLinks = false;
-                        activity = Activity.Build(track, start, settings);
+                        activity = Activity.Build(track, start, settings, lyric);
                         discord.SetActivity(activity);
                     }
-                    Log.Write("Status: " + Describe(track) + (activity.ContainsKey("assets") ? "" : " (no cover)") +
+                    // A new line of the song every few seconds would bury the log.
+                    var onlyLyric = lyricCame && key == sentKey && playing == sentPlaying && !jumped && !isResend && !coverCame;
+                    if (!onlyLyric) Log.Write("Status: " + Describe(track) + (activity.ContainsKey("assets") ? "" : " (no cover)") +
                         (key != sentKey && seenKey == key ? " [" + (int)(DateTime.Now - seenAt).TotalMilliseconds + " ms after the track was seen]" : ""));
                 }
                 shownKey = track == null ? null : key;
                 sentKey = key;
                 sentImage = image;
+                sentLyric = lyric;
                 if (jumped) jumpedAt = DateTime.Now;
                 sentStart = start;
                 sentPlaying = playing;

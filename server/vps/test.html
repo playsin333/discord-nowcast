@@ -1,0 +1,16 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Nowcast — проверка обложек</title>
+<style>:root{color-scheme:dark}body{font:16px system-ui;max-width:700px;margin:40px auto;padding:20px;background:#313338;color:#eee}a{color:#aebaff}img{max-width:300px}input{margin:20px 0}</style>
+<h1>Обложки Nowcast</h1><p>Выбери картинку: она уменьшится до 300 пикселей и загрузится на сервер. Хранение — 6 часов после последней загрузки.</p>
+<input type="file" accept="image/*" id="file"><p id="result" role="status"></p><img id="preview" alt=""><p><a href="/admin">Админка</a></p>
+<script>
+const file=document.querySelector('#file'),result=document.querySelector('#result'),preview=document.querySelector('#preview');
+file.onchange=async()=>{if(!file.files[0])return;result.textContent='Загружаю…';try{
+const image=await createImageBitmap(file.files[0]);const s=Math.min(1,300/Math.max(image.width,image.height));
+const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.width*s));canvas.height=Math.max(1,Math.round(image.height*s));
+canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);image.close();
+const blob=await new Promise(ok=>canvas.toBlob(ok,'image/jpeg',0.88));
+const res=await fetch('/upload?kind=own',{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob});const answer=await res.text();
+result.textContent=res.ok?'Загружено: '+answer:'Ошибка '+res.status+': '+answer;if(res.ok)preview.src=answer;
+}catch(e){result.textContent='Не вышло: '+e.message;}};
+</script></html>

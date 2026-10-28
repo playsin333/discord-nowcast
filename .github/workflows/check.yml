@@ -11,6 +11,22 @@ permissions:
   contents: write
 
 jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Worker tests
+        run: node --test server/worker.test.mjs
+      - name: VPS storage tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-pil
+          cd server/vps
+          python3 -m unittest -v test_app
+
   check:
     runs-on: windows-latest
     steps:

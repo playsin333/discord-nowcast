@@ -18,6 +18,11 @@ namespace Nowcast
 
         static int Main()
         {
+            // Tests must never overwrite the user's real fallback picture or log.
+            var testFolder = Path.Combine(Path.GetTempPath(), "nowcast-tests-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(testFolder);
+            typeof(Log).GetField("Folder").SetValue(null, testFolder);
+            typeof(Log).GetField("FilePath").SetValue(null, Path.Combine(testFolder, "log.txt"));
             Run("defaults", Defaults);
             Run("cover setting from before", CoverSetting);
             Run("sources", SourcesByApp);
@@ -32,6 +37,7 @@ namespace Nowcast
             Run("cover without Spotify's logo", CoverCrop);
             Run("cover after the network is back", CoverAfterFailures);
             Run("cover link renewed before the host deletes it", CoverRenewed);
+            Run("one-hour cover renewed at 48 minutes", HourCoverRenewed);
             Run("player's picture after iTunes", LatePicture);
             Run("iTunes error is not an answer", ITunesError);
             Run("one track's cover is not another's", CoverPerTrack);
@@ -39,12 +45,16 @@ namespace Nowcast
             Run("cover settings changed", CoverSettingsChanged);
             Run("cover in place of the settings' picture", CoverOverImage);
             Run("picked picture when there is no cover", FallbackPicture);
+            Run("lyrics", LyricsLines);
+            Run("lyrics looked up again after an error", LyricsRetry);
             Run("hosts that failed are left out", HostsLeftOut);
+            Run("VPS picture lifetimes and moderation rejection", HostFallback);
             Run("own status", OwnStatus);
             Run("own status settings", OwnSettings);
             Run("own picture uploaded and renewed", OwnPicture);
             Run("own picture from a file", OwnPictureFile);
             Console.WriteLine(failed == 0 ? "All passed" : failed + " failed");
+            Directory.Delete(testFolder, true);
             return failed == 0 ? 0 : 1;
         }
 
@@ -327,6 +337,23 @@ namespace Nowcast
             });
         }
 
+        static void HourCoverRenewed()
+        {
+            CoversWith(delegate
+            {
+                Covers.Upload = delegate(byte[] image)
+                {
+                    uploads++;
+                    return new Hosts.Uploaded { Url = "https://host/hour-" + uploads, Keep = TimeSpan.FromHours(1) };
+                };
+                var track = Track("SoundCloud.exe", "A", "Hour");
+                var settings = new Settings();
+                var first = Cover(track, settings, 0);
+                Check(Cover(track, settings, 47 * 60) == first, "usable before renewal");
+                Check(Cover(track, settings, 60) != first && uploads == 2, "renewed after 48 minutes");
+            });
+        }
+
         // A browser hands its picture over late: iTunes stands in, then the player's picture takes its place.
         static void LatePicture()
         {
@@ -463,6 +490,66 @@ namespace Nowcast
             });
         }
 
+        // LRC parsed, the line of the moment picked, and where it goes in the status.
+        static void LyricsLines()
+        {
+            var lines = Lyrics.Parse("[ar:Kino]\n[00:05.00]Тёплое место\n[00:09.50][01:00.00]Группа крови\n[00:12.00]\n");
+            Check(lines.Count == 4, "four timed lines: " + lines.Count);
+            Check(Lyrics.Line(lines, 1000) == null, "nothing before the first");
+            Check(Lyrics.Line(lines, 6000) == "Тёплое место", "the first");
+            Check(Lyrics.Line(lines, 10000) == "Группа крови", "the second");
+            Check(Lyrics.Line(lines, 13000) == "♪", "a pause");
+            Check(Lyrics.Line(lines, 61000) == "Группа крови", "a repeated line");
+            var track = Track("SoundCloud.exe", "Kino", "Группа крови");
+            var settings = new Settings { Image = "https://example.com/a.png" };
+            track.Album = "Album";
+            Check((string)Assets(Build(track, settings, "Группа крови"))["large_text"] == "Группа крови", "under the lines, in place of the album");
+            settings.Image = "";
+            Check((string)Build(track, settings, "Группа крови")["state"] == "Группа крови", "no picture: in place of the second line");
+            track.IsPlaying = false;
+            Check((string)Build(track, settings, "Группа крови")["state"] != "Группа крови", "not on pause");
+        }
+
+        static void LyricsRetry()
+        {
+            var now = Lyrics.Now;
+            var lookUp = Lyrics.LookUp;
+            var clock = new DateTime(2026, 10, 28, 12, 0, 0);
+            var lookups = 0;
+            var down = true;
+            Lyrics.Reset();
+            Lyrics.Now = delegate { return clock; };
+            Lyrics.LookUp = delegate
+            {
+                lookups++;
+                return down ? null : Lyrics.Parse("[00:01.00]line");
+            };
+            try
+            {
+                var track = Track("SoundCloud.exe", "A", "B");
+                Func<List<LyricLine>> find = delegate
+                {
+                    Lyrics.Find(track);
+                    var pending = (System.Collections.IDictionary)typeof(Lyrics).GetField("pending", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+                    foreach (System.Threading.Tasks.Task job in pending.Values) job.Wait();
+                    return Lyrics.Find(track);
+                };
+                Check(find() == null && lookups == 1, "none while the site is down");
+                Check(find() == null && lookups == 1, "not asked again at once");
+                down = false;
+                clock = clock.AddSeconds(3);
+                var lines = find();
+                Check(lines != null && lines.Count == 1 && lookups == 2, "found when the site is back");
+                Check(find() == lines && lookups == 2, "asked once");
+            }
+            finally
+            {
+                Lyrics.Now = now;
+                Lyrics.LookUp = lookUp;
+                Lyrics.Reset();
+            }
+        }
+
         static void HostsLeftOut()
         {
             var order = typeof(Hosts).GetMethod("Order", BindingFlags.NonPublic | BindingFlags.Static);
@@ -476,13 +563,76 @@ namespace Nowcast
                 var some = (List<int>)order.Invoke(null, new object[] { now });
                 Check(!some.Contains(0) && some.Count == downUntil.Length - 1, "a failed host left out");
                 for (var i = 0; i < downUntil.Length; i++) downUntil[i] = now.AddMinutes(10 + i);
-                downUntil[2] = now.AddMinutes(1);
+                downUntil[1] = now.AddMinutes(1);
                 var one = (List<int>)order.Invoke(null, new object[] { now });
-                Check(one.Count == 1 && one[0] == 2, "all failed: only the one due back first");
+                Check(one.Count == 1 && one[0] == 1, "reserve stays available during the Cloudflare pause");
             }
             finally
             {
                 for (var i = 0; i < downUntil.Length; i++) downUntil[i] = DateTime.MinValue;
+            }
+        }
+
+        class FakeHostHandler : System.Net.Http.HttpMessageHandler
+        {
+            public int PrimaryStatus = 503;
+            public string FailureBody;
+            public readonly List<string> Requests = new List<string>();
+            protected override System.Threading.Tasks.Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken cancellation)
+            {
+                var origin = request.RequestUri.GetLeftPart(UriPartial.Authority);
+                Requests.Add(origin);
+                var status = origin == Hosts.Own ? PrimaryStatus : 200;
+                var response = new System.Net.Http.HttpResponseMessage((System.Net.HttpStatusCode)status);
+                response.Content = new System.Net.Http.StringContent(status == 200 ? origin + "/" + new string('a', 40) + ".png" : FailureBody ?? (status == 403 ? "Banned" : "unavailable"));
+                return System.Threading.Tasks.Task.FromResult(response);
+            }
+        }
+
+        static void HostFallback()
+        {
+            var saved = Hosts.UploadHttp;
+            var savedClock = Hosts.Now;
+            var clock = new DateTime(2026,10,29,13,0,0,DateTimeKind.Utc);
+            Hosts.Now = delegate { return clock; };
+            var down = (DateTime[])typeof(Hosts).GetField("downUntil", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+            try
+            {
+                var fake = new FakeHostHandler();
+                Hosts.UploadHttp = new System.Net.Http.HttpClient(fake);
+                var got = Hosts.UploadOwn(new byte[] { 0x89, 0x50 });
+                Check(got.Url.StartsWith(Hosts.Reserve + "/") && got.Keep == TimeSpan.FromHours(6), "six-hour reserve for own pictures");
+                Check(fake.Requests.Count == 2 && fake.Requests[0] == Hosts.Own && fake.Requests[1] == Hosts.Reserve, "Cloudflare first, then reserve on error");
+                Check(down[0] == clock.AddMinutes(30), "Cloudflare paused for exactly 30 minutes");
+                clock = clock.AddMinutes(29).AddSeconds(59);
+                fake.Requests.Clear();
+                var player = Hosts.Upload(new byte[] { 0x89, 0x50 });
+                Check(player.Url.StartsWith(Hosts.Reserve + "/") && player.Keep == TimeSpan.FromHours(1), "player cover uses VPS with one-hour lifetime");
+                Check(fake.Requests.Count == 1 && fake.Requests[0] == Hosts.Reserve, "Cloudflare is not retried before the deadline");
+                clock = clock.AddSeconds(1);
+                fake.PrimaryStatus = 200;
+                fake.Requests.Clear();
+                Check(Hosts.Upload(new byte[] { 1 }).Url.StartsWith(Hosts.Own + "/"), "Cloudflare tried again at 30 minutes");
+                Check(fake.Requests.Count == 1 && fake.Requests[0] == Hosts.Own, "recovered Cloudflare regains priority");
+                foreach (var status in new[] { 403, 451, 413, 415 })
+                {
+                    fake.PrimaryStatus = status;
+                    fake.Requests.Clear();
+                    var rejected = false;
+                    try { Hosts.UploadOwn(new byte[] { 1 }); } catch (Hosts.Rejected) { rejected = true; }
+                    Check(rejected && fake.Requests.Count == 1, "rejection never falls back: " + status);
+                }
+                fake.PrimaryStatus = 403;
+                fake.FailureBody = "error code: 1010";
+                fake.Requests.Clear();
+                Check(Hosts.Upload(new byte[] { 1 }).Url.StartsWith(Hosts.Reserve + "/"), "Cloudflare infrastructure rejection can use the reserve");
+            }
+            finally
+            {
+                Hosts.UploadHttp.Dispose();
+                Hosts.UploadHttp = saved;
+                Hosts.Now = savedClock;
+                for (var i = 0; i < down.Length; i++) down[i] = DateTime.MinValue;
             }
         }
 
@@ -617,11 +767,11 @@ namespace Nowcast
             };
         }
 
-        static Dictionary<string, object> Build(Track track, Settings settings)
+        static Dictionary<string, object> Build(Track track, Settings settings, string lyric = null)
         {
             // No lookups: the settings' link stands for the picture.
             settings.CoverSource = "picture";
-            return Activity.Build(track, null, settings);
+            return Activity.Build(track, null, settings, lyric);
         }
 
         static Dictionary<string, object> Assets(Dictionary<string, object> activity)

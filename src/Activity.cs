@@ -11,7 +11,8 @@ namespace Nowcast
         // run when this Discord turns down a status that has them.
         public static bool UseLinks = true;
 
-        public static Dictionary<string, object> Build(Track track, long? startedAt, Settings settings)
+        // lyric: the line of the song sung now, or null.
+        public static Dictionary<string, object> Build(Track track, long? startedAt, Settings settings, string lyric = null)
         {
             var source = track.Source.Name;
             var artist = track.Artist != "" ? track.Artist : source;
@@ -51,6 +52,13 @@ namespace Nowcast
                 // The line under the others: the album, when there is one and it is
                 // not hidden. Not the source: it is in the header or a line above.
                 if (!settings.HideAlbum && track.Album != "") assets["large_text"] = Limit(track.Album);
+            }
+            // The line being sung: under the others in place of the album, or in
+            // place of the second line when there is no picture to hold it.
+            if (lyric != null && track.IsPlaying)
+            {
+                if (assets.ContainsKey("large_image")) assets["large_text"] = Limit(lyric);
+                else activity["state"] = Limit(lyric);
             }
             if (assets.Count > 0) activity["assets"] = assets;
 

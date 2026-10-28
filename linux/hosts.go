@@ -2,28 +2,23 @@ package main
 
 import (
 	"bytes"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
 // Hosts for the player's picture: Discord only shows pictures by URL. Our
-// own (a Cloudflare Worker, server/worker.js) first, then uguu.se, as on
-// Windows; litterbox has answered "412 No file!" to everything since
-// October 2026 and is left out here.
+// own Cloudflare Worker first, then our VPS. Both support moderation.
 var ownHost = "https://nowcast-covers.playsin333.workers.dev"
+var reserveHost = "https://nowcast.85-192-42-111.sslip.io:10443"
+var uploadClient = &http.Client{Timeout: 6 * time.Second}
 
-// 20 s: a slow connection (a VPN) took over 10 s for one that went through a
-// moment later; the next host starts alongside after hedge anyway.
+// Searches for metadata can take longer than cover uploads.
 var httpClient = &http.Client{Timeout: 20 * time.Second}
 
 // An uploaded picture: its link and how long the host keeps it.
@@ -43,58 +38,48 @@ type host struct {
 }
 
 var hosts = []*host{
-	{name: "nowcast", keep: 14 * 24 * time.Hour, upload: func(image []byte) (string, error) { return toOwn(image, "") }, took: 800},
-	{name: "uguu.se", keep: 3 * time.Hour, upload: toUguu, took: 1000},
+	{name: "nowcast", keep: time.Hour, upload: func(image []byte) (string, error) { return toOwn(image, "") }, took: 800},
+	{name: "vps", keep: time.Hour, upload: func(image []byte) (string, error) { return toManaged(reserveHost, image, "") }, took: 1000},
 }
 
 var (
 	hostBook sync.Mutex
-	// A host that failed is left out for 1, 5, 15, then 30 minutes.
-	pauses = []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute, 30 * time.Minute}
-	hedge  = 1500 * time.Millisecond
+	// No new Cloudflare attempts for 30 minutes after a transient error.
+	hostNow = time.Now
 )
 
-// The quickest lately first. A host that has not answered within hedge
-// does not hold the others back: the next one starts alongside it, and the
-// first to deliver wins. When all are left out, the one due back first is
-// tried, so a network that comes back is noticed.
+// Try Cloudflare, then the VPS on a transient failure. Rejections are final.
 func upload(image []byte) (Uploaded, error) {
-	order := hostOrder(time.Now())
-	type outcome struct {
-		uploaded Uploaded
-		err      error
-	}
-	results := make(chan outcome, len(order))
-	running, next := 0, 0
+	return uploadManaged(image, "")
+}
+
+func uploadManaged(image []byte, query string) (Uploaded, error) {
 	var last error
-	start := func() {
-		h := order[next]
-		next++
-		running++
-		go func() {
-			url, err := uploadTo(h, image)
-			results <- outcome{Uploaded{URL: url, Keep: h.keep}, err}
-		}()
-	}
-	start()
-	for running > 0 {
-		var timer <-chan time.Time
-		if next < len(order) {
-			timer = time.After(hedge)
-		}
-		select {
-		case result := <-results:
-			running--
-			if result.err == nil {
-				return result.uploaded, nil
+	for _, h := range hostOrder(hostNow()) {
+		var url string
+		var err error
+		if query == "" {
+			url, err = uploadTo(h, image)
+		} else {
+			origin := ownHost
+			if h.name == "vps" {
+				origin = reserveHost
 			}
-			last = result.err
-			if running == 0 && next < len(order) {
-				start()
-			}
-		case <-timer:
-			start()
+			url, err = toManaged(origin, image, query)
+			recordHost(h, time.Now(), err)
 		}
+		if err == nil {
+			keep := h.keep
+			if query != "" {
+				keep = 6 * time.Hour
+			}
+			return Uploaded{URL: url, Keep: keep}, nil
+		}
+		var rejected *uploadRejection
+		if errors.As(err, &rejected) {
+			return Uploaded{}, err
+		}
+		last = err
 	}
 	return Uploaded{}, last
 }
@@ -103,21 +88,11 @@ func hostOrder(now time.Time) []*host {
 	hostBook.Lock()
 	defer hostBook.Unlock()
 	var order []*host
-	for _, h := range hosts {
-		if !now.Before(h.downUntil) {
-			order = append(order, h)
-		}
+	if !now.Before(hosts[0].downUntil) {
+		order = append(order, hosts[0])
 	}
-	if len(order) == 0 {
-		soonest := hosts[0]
-		for _, h := range hosts[1:] {
-			if h.downUntil.Before(soonest.downUntil) {
-				soonest = h
-			}
-		}
-		order = append(order, soonest)
-	}
-	sort.SliceStable(order, func(a, b int) bool { return order[a].took < order[b].took })
+	order = append(order, hosts[1])
+	// Keep fixed priority: recovered Cloudflare regains first place.
 	return order
 }
 
@@ -125,60 +100,83 @@ func hostOrder(now time.Time) []*host {
 func uploadTo(h *host, image []byte) (string, error) {
 	begin := time.Now()
 	url, err := h.upload(image)
+	recordHost(h, begin, err)
+	return url, err
+}
+
+func recordHost(h *host, begin time.Time, err error) {
 	hostBook.Lock()
 	defer hostBook.Unlock()
 	if err != nil {
+		var rejected *uploadRejection
+		if errors.As(err, &rejected) {
+			return
+		}
 		logf("%s failed: %v", h.name, err)
-		h.downUntil = time.Now().Add(pauses[min(h.failures, len(pauses)-1)])
+		if h == hosts[0] {
+			h.downUntil = hostNow().Add(30 * time.Minute)
+		}
 		h.failures++
-		return "", err
+		return
 	}
 	h.took = (h.took + int(time.Since(begin).Milliseconds())) / 2
 	h.failures = 0
-	return url, nil
+	h.downUntil = time.Time{}
 }
 
 // A picture of one's own status goes to our host alone, where a bad one can
-// be removed and its uploader banned; it is kept there for 2 days.
+// be removed and its uploader banned; renewed before its six-hour expiry.
 func uploadOwn(image []byte) (Uploaded, error) {
-	url, err := toOwn(image, "?kind=own")
-	return Uploaded{URL: url, Keep: 48 * time.Hour}, err
+	return uploadManaged(image, "?kind=own")
 }
 
 // Ours: the picture itself in the body, the link in the reply. Named by its
 // hash, so one album's cover is kept once for everyone.
 func toOwn(image []byte, query string) (string, error) {
+	return toManaged(ownHost, image, query)
+}
+
+type uploadRejection struct {
+	status  int
+	message string
+}
+
+func (e *uploadRejection) Error() string { return fmt.Sprintf("%d %s", e.status, e.message) }
+
+func toManaged(origin string, image []byte, query string) (string, error) {
 	kind := "image/jpeg"
 	if isPNG(image) {
 		kind = "image/png"
 	}
-	reply, err := post(ownHost+"/upload"+query, kind, image)
+	request, err := newRequest("POST", origin+"/upload"+query, bytes.NewReader(image))
 	if err != nil {
 		return "", err
 	}
-	reply = strings.TrimSpace(reply)
-	if !strings.HasPrefix(reply, ownHost+"/") || strings.Contains(reply, " ") {
+	request.Header.Set("Content-Type", kind)
+	response, err := uploadClient.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(response.Body, 4096))
+	if err != nil {
+		return "", err
+	}
+	reply := strings.TrimSpace(string(data))
+	switch response.StatusCode {
+	case 400, 413, 415, 451:
+		return "", &uploadRejection{response.StatusCode, short(reply)}
+	}
+	if response.StatusCode == 403 && reply == "Banned" {
+		return "", &uploadRejection{403, reply}
+	}
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		return "", fmt.Errorf("%d %s", response.StatusCode, short(reply))
+	}
+	if !regexp.MustCompile("^" + regexp.QuoteMeta(origin) + "/[a-f0-9]{40}\\.(jpg|png)$").MatchString(reply) {
 		return "", errors.New(short(reply))
 	}
 	return reply, nil
-}
-
-// uguu.se: kept for three hours.
-func toUguu(image []byte) (string, error) {
-	kind, body := form("files[]", image)
-	reply, err := post("https://uguu.se/upload", kind, body)
-	if err != nil {
-		return "", err
-	}
-	var parsed struct {
-		Files []struct {
-			URL string `json:"url"`
-		} `json:"files"`
-	}
-	if json.Unmarshal([]byte(reply), &parsed) == nil && len(parsed.Files) > 0 && strings.HasPrefix(parsed.Files[0].URL, "https://") {
-		return parsed.Files[0].URL, nil
-	}
-	return "", errors.New(short(reply))
 }
 
 // Hosts behind a firewall turn away requests that do not say what sends them.
@@ -188,43 +186,6 @@ func newRequest(method, url string, body io.Reader) (*http.Request, error) {
 		request.Header.Set("User-Agent", "discord-nowcast/"+version+" (linux)")
 	}
 	return request, err
-}
-
-func post(url, kind string, body []byte) (string, error) {
-	request, err := newRequest("POST", url, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	request.Header.Set("Content-Type", kind)
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return "", err
-	}
-	defer response.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if response.StatusCode < 200 || response.StatusCode > 299 {
-		return "", fmt.Errorf("%d %s", response.StatusCode, short(string(data)))
-	}
-	return string(data), nil
-}
-
-// multipart/form-data written by hand, as a browser sends it: not every
-// server understands what libraries write.
-func form(field string, image []byte) (string, []byte) {
-	random := make([]byte, 16)
-	rand.Read(random)
-	boundary := "----nowcast" + hex.EncodeToString(random)
-	name, kind := "cover.jpg", "image/jpeg"
-	if isPNG(image) {
-		name, kind = "cover.png", "image/png"
-	}
-	var body bytes.Buffer
-	body.WriteString("--" + boundary + "\r\n")
-	body.WriteString(`Content-Disposition: form-data; name="` + field + `"; filename="` + name + "\"\r\n")
-	body.WriteString("Content-Type: " + kind + "\r\n\r\n")
-	body.Write(image)
-	body.WriteString("\r\n--" + boundary + "--\r\n")
-	return "multipart/form-data; boundary=" + boundary, body.Bytes()
 }
 
 var (

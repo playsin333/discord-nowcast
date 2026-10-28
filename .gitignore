@@ -1,3 +1,8 @@
 discord-nowcast.exe
 CLAUDE.local.md
 dist/
+__pycache__/
+*.pyc
+server/vps/*.db*
+server/vps/*.env
+server/vps/*access.txt

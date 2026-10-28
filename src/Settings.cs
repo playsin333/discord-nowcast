@@ -49,6 +49,8 @@ namespace Nowcast
         public bool Buttons = true;
         // No caption under the lines of the status: neither the album nor the source.
         public bool HideAlbum = false;
+        // The line of the song sung now in the status, from lrclib.net.
+        public bool Lyrics = false;
         public bool CheckUpdates = true;
         public string Image = "";
         // One's own status in place of the track: "Listening to nowcast" (or
@@ -97,6 +99,7 @@ namespace Nowcast
                 "  \"coverSearch\": " + json.Serialize(CoverSearch),
                 "  \"buttons\": " + json.Serialize(Buttons),
                 "  \"hideAlbum\": " + json.Serialize(HideAlbum),
+                "  \"lyrics\": " + json.Serialize(Lyrics),
                 "  \"checkUpdates\": " + json.Serialize(CheckUpdates),
                 "  \"image\": " + json.Serialize(Image),
                 "  \"own\": " + json.Serialize(Own),
@@ -202,6 +205,7 @@ namespace Nowcast
             CoverSearch = Get(values, "coverSearch", CoverSearch);
             Buttons = Get(values, "buttons", Buttons);
             HideAlbum = Get(values, "hideAlbum", HideAlbum);
+            Lyrics = Get(values, "lyrics", Lyrics);
             CheckUpdates = Get(values, "checkUpdates", CheckUpdates);
             Image = Get<string>(values, "image") ?? Image;
             Own = Get(values, "own", Own);

@@ -11,12 +11,12 @@ Yandex Music, Spotify, SoundCloud, VK, Telegram, YouTube in a browser, AIMP, loc
 [![release](https://img.shields.io/github/v/release/playsin333/discord-nowcast?color=5865f2)](https://github.com/playsin333/discord-nowcast/releases/latest)
 [![downloads](https://img.shields.io/github/downloads/playsin333/discord-nowcast/total?color=3d3c38)](https://github.com/playsin333/discord-nowcast/releases)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux%20(beta)-3d3c38)
-[![discord](https://img.shields.io/badge/discord-server-5865f2)](https://discord.gg/pHzmvghmJR)
+[![discord](https://img.shields.io/badge/discord-server-5865f2)](https://discord.gg/SsANGaMr3M)
 [![license](https://img.shields.io/badge/license-MIT-3d3c38)](LICENSE)
 
 [Русский](README.md) · **English**
 
-**[⬇ Download discord-nowcast.exe](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast.exe)** · [Linux](#linux-beta) · [Discord server](https://discord.gg/pHzmvghmJR) · [Discussions](https://github.com/playsin333/discord-nowcast/discussions) · [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml)
+**[⬇ Download discord-nowcast.exe](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast.exe)** · [Linux](#linux-beta) · [Discord server](https://discord.gg/SsANGaMr3M) · [Discussions](https://github.com/playsin333/discord-nowcast/discussions) · [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml)
 
 </div>
 
@@ -93,6 +93,7 @@ Most of these are in the settings window. All of them live in `config.json` in `
 | `coverSearch` | `false` with `player`: no iTunes lookup |
 | `buttons` | `false` removes the "Listen on …" button |
 | `hideAlbum` | `true` removes the status's third line with the album (in the window: *Hide the album*) |
+| `lyrics` | `true` puts the song's lyrics in the status (in the window: *Lyrics in the status*): the line being sung, as the third line in place of the album, or the second without a picture. The timed lyrics come from the open database [lrclib.net](https://lrclib.net); a track it does not have gets the usual status. Discord takes a status every 4 seconds at most, so a quick line is sometimes skipped |
 | `checkUpdates` | `false` stops the automatic update check |
 | `image` | a picture URL to show when a track has no cover. Easier: pick a picture in the settings window under *Cover art*; it comes before this link, and with *My picture on every track* it stands in for all covers and lives in the `fallback-picture` file next to config.json |
 | `own`, `ownType`, `ownTitle`, `ownLine2`, `ownMinutes` | your own status (the *Own status* window): on or off, the type (`listening`, `watching`, `playing`), line 1, line 2, how many minutes it has been going (up to 6000). The picture lives next to it, in the `own-picture` file |
@@ -102,7 +103,7 @@ Most of these are in the settings window. All of them live in `config.json` in `
 
 ## Linux (beta)
 
-There is a Linux version: the same status, the same Discord applications for the services, covers, the button and your own status. It is a beta: try it and tell us on the [server](https://discord.gg/pHzmvghmJR) what works and what does not.
+There is a Linux version: the same status, the same Discord applications for the services, covers, the button and your own status. It is a beta: try it and tell us on the [server](https://discord.gg/SsANGaMr3M) what works and what does not.
 
 **Install.** Pick the one for your distribution:
 
@@ -130,7 +131,7 @@ Windows already knows what is playing: it is the track card that pops up when yo
 
 - **Source name.** Taken from the app's ID. A site installed as an app (SoundCloud or YouTube Music via *Install* in Chrome or Edge) is named as in the Start menu. In a regular browser tab the site is told by the window title: the window whose title holds the track is searched for YouTube, Twitch, SoundCloud and the rest. So the status says SoundCloud, not Chrome.
 - **"Listening to SoundCloud".** Discord puts the name of the application that sent the status after "Listening to". So each service has a Discord application of its own, and discord-nowcast reconnects to the right one when the source changes. YouTube and Twitch go out as "Watching", except YouTube music channels ("Artist - Topic" and VEVO): those read "Listening to YouTube".
-- **Cover art.** It is the picture the player hands to Windows along with the track, the same one the volume flyout shows, so the status never has another track's cover. If Windows still holds the previous track's picture, that is noticed and the picture is read again. When a player puts its logo under the cover on a transparent strip (Spotify does), the strip is cut off and the status has the cover alone. Discord only shows pictures by URL, so it is uploaded to the program's own server (`nowcast-covers.playsin333.workers.dev`, keeps a cover 14 days, [code](server/worker.js)), or to the temporary hosts [uguu.se](https://uguu.se) or [litterbox.catbox.moe](https://litterbox.catbox.moe) when it does not answer. When the network is gone, it tries again while the track plays, and a link on a temporary host is renewed before the host deletes it. If the player gives no picture, or no host takes it, the track is looked up in the open iTunes catalog: when the same artist and title are there, the album art is used. Failing that, the status shows the picture picked in the settings for tracks without a cover, or else Discord shows the application icon. With *From iTunes* in the settings the album art is looked up first, and the player's picture is used only when the track is not there. The status of a new track does not wait for its cover: it goes at once, and the cover follows a couple of seconds later. To keep the upload quick, the picture is scaled down to 300 pixels and saved as a JPEG (when nothing in it is transparent), and when a host answers slowly, the next one joins in at once.
+- **Cover art.** The player's picture is scaled to 300 pixels. Uploads try Cloudflare first and then the program's server on a network error, timeout or temporary failure. After such a failure Cloudflare is skipped for 30 minutes; the next upload after the deadline tries it first again. Player covers are kept for one hour and renew after 48 minutes while needed. Manually picked pictures are kept for six hours and renew after 4 hours 48 minutes; only those appear in the moderation gallery. A new status is sent immediately, with its image following in the background. Direct CDN links and iTunes search work as before.
 - **The button.** Players do not tell Windows the track's link, so "Listen on …" opens a search for the track in the same service; for Yandex Music, Telegram and browsers, a YouTube search (with a Yandex Music link Discord does not show the status to others). Discord does not let you click your own buttons, only other people's.
 - **Rate limit.** Discord accepts at most five updates per 20 seconds, so the status changes at most once every four seconds.
 
@@ -145,7 +146,7 @@ Windows already knows what is playing: it is the track card that pops up when yo
 
 ## Privacy
 
-The artist and title go to Discord, which is the status itself, and to the iTunes search for the cover: with *From the player* only when the player has none or no host takes it (`"coverSearch": false` turns that off), with *From iTunes* for every track. The cover picture from the player is uploaded to the program's own server (or uguu.se, litterbox.catbox.moe); the server keeps only the picture itself and, to limit uploads, a hash of the IP address for an hour. *No cover* turns both off. The own status's picture and the picture for tracks without a cover go to the program's server only and are kept there for two days (uploaded again while in use) with a hash of the IP address: a picture against the rules is removed by the author, and its uploader can be shut out. The update check asks GitHub for the latest release. Nothing else is sent anywhere.
+The artist and title go to Discord and, when enabled, to lrclib.net for lyrics and iTunes for cover search. Images upload through Cloudflare or directly to the program's server; unrelated file hosts are not used. The Worker forwards to that same storage, so these are two access paths to one storage service. Player covers are kept for one hour, manually picked pictures for six hours after their last upload. Both renew while needed. Only manually picked images appear in the moderation gallery. Limits and bans use a secret-keyed IP hash, not raw addresses in the database. Blocks and banned hashes survive cleanup. Update checks contact GitHub.
 
 ## Building it yourself
 
@@ -173,7 +174,7 @@ On GitHub the program is built and checked by itself after every change.
 
 ## Questions, bugs, ideas
 
-- [Discord server](https://discord.gg/pHzmvghmJR): help, news, status screenshots, mostly in Russian.
+- [Discord server](https://discord.gg/SsANGaMr3M): help, news, status screenshots, mostly in Russian.
 - [Discussions](https://github.com/playsin333/discord-nowcast/discussions): questions, ideas, show your setup.
 - [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml): the diagnostics help the most: tray menu → *Copy diagnostics*, then paste it into the report.
 

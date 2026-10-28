@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const discordInvite = "https://discord.gg/pHzmvghmJR"
+const discordInvite = "https://discord.gg/SsANGaMr3M"
 
 // Links on the cover and the title line. Turned off for the rest of the
 // run when this Discord turns down a status that has them.
@@ -15,8 +15,9 @@ type object = map[string]interface{}
 
 // The Discord activity for a track: "Listening to …" (type 2), or
 // "Watching …" (type 3) for video services. start: when the track started,
-// Unix ms, or nil; image: the picture's link, or "".
-func buildActivity(track *Track, start *int64, settings *Settings, image string) object {
+// Unix ms, or nil; image: the picture's link, or ""; lyric: the line of the
+// song sung now, or "".
+func buildActivity(track *Track, start *int64, settings *Settings, image, lyric string) object {
 	source := track.Source.Name
 	artist := track.Artist
 	if artist == "" {
@@ -60,6 +61,15 @@ func buildActivity(track *Track, start *int64, settings *Settings, image string)
 		// not hidden. Not the source: it is in the header or a line above.
 		if !settings.HideAlbum && track.Album != "" {
 			assets["large_text"] = limit(track.Album, 128)
+		}
+	}
+	// The line being sung: under the others in place of the album, or in
+	// place of the second line when there is no picture to hold it.
+	if lyric != "" && track.IsPlaying {
+		if image != "" {
+			assets["large_text"] = limit(lyric, 128)
+		} else {
+			activity["state"] = limit(lyric, 128)
 		}
 	}
 	if len(assets) > 0 {
