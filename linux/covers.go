@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -99,11 +100,8 @@ type Covers struct {
 	current    string
 	mode       string
 
-	ownPrint    string
-	ownEntry    *coverEntry
-	ownJob      *coverJob
-	ownRetryAt  time.Time
-	ownFailures int
+	// Pictures of one's own from files, by path: they outlive Reset.
+	files map[string]*fileState
 
 	// Stand-ins for the tests: the clock, the player's picture, the uploads and iTunes.
 	now         func() time.Time
@@ -123,6 +121,7 @@ func newCovers(ready func()) *Covers {
 		uploadOwn:   uploadOwn,
 		lookUp:      fromITunes,
 		ready:       ready,
+		files:       map[string]*fileState{},
 	}
 	c.Reset()
 	return c
@@ -346,49 +345,61 @@ func (c *Covers) uploaded(u Uploaded) *coverEntry {
 	return &coverEntry{URL: u.URL, Renew: got.Add(u.Keep * 8 / 10), Gone: got.Add(u.Keep - 10*time.Minute)}
 }
 
-// One's own status's picture, from its file: uploaded like a cover, tried
-// again the same way and renewed before the host deletes it. The file is
-// told apart by its time and size, not read every round.
+// A picture of one's own from a file: one's own status's, or the one shown
+// when a track has no cover. Uploaded like a cover, tried again the same way
+// and renewed before the host deletes it. The file is told apart by its
+// time and size, not read every round.
+type fileState struct {
+	print    string
+	entry    *coverEntry
+	job      *coverJob
+	retryAt  time.Time
+	failures int
+}
+
 func (c *Covers) FindFile(path string) string {
 	now := c.now()
+	state := c.files[path]
+	if state == nil {
+		state = &fileState{}
+		c.files[path] = state
+	}
 	print := ""
 	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
 		print = fmt.Sprintf("%d:%d", info.ModTime().UnixNano(), info.Size())
 	}
-	if print != c.ownPrint {
-		c.ownPrint = print
-		c.ownEntry = nil
-		c.ownFailures = 0
-		c.ownRetryAt = time.Time{}
+	if print != state.print {
+		*state = fileState{print: print, job: state.job}
 	}
 	if print == "" {
 		return ""
 	}
-	if c.ownJob != nil {
-		if !c.ownJob.finished() {
-			return c.ownUsable(now)
+	if state.job != nil {
+		if !state.job.finished() {
+			return state.usable(now)
 		}
-		result := c.ownJob.result
-		c.ownJob = nil
+		result := state.job.result
+		state.job = nil
 		// A picture picked since is not this one.
 		if result.Print == print {
 			if result.Entry != nil {
-				c.ownEntry = result.Entry
-				c.ownFailures = 0
+				state.entry = result.Entry
+				state.failures = 0
 			} else {
-				c.ownFailures++
-				c.ownRetryAt = now.Add(backoff(c.ownFailures))
+				state.failures++
+				state.retryAt = now.Add(backoff(state.failures))
 			}
 		}
 	}
-	if c.ownEntry != nil && now.Before(c.ownEntry.Renew) {
-		return c.ownEntry.URL
+	if state.entry != nil && now.Before(state.entry.Renew) {
+		return state.entry.URL
 	}
-	if now.Before(c.ownRetryAt) {
-		return c.ownUsable(now)
+	if now.Before(state.retryAt) {
+		return state.usable(now)
 	}
 	job := &coverJob{done: make(chan struct{})}
-	c.ownJob = job
+	state.job = job
+	name := filepath.Base(path)
 	c.run(job, func() coverResult {
 		data, err := pictureFromFile(path)
 		if err == nil {
@@ -396,19 +407,19 @@ func (c *Covers) FindFile(path string) string {
 			uploaded, err = c.uploadOwn(data)
 			if err == nil {
 				entry := c.uploaded(uploaded)
-				logf("Own picture: %s", entry.URL)
+				logf("Picture %s: %s", name, entry.URL)
 				return coverResult{Entry: entry, Print: print}
 			}
 		}
-		logf("Own picture not uploaded, will try again: %v", err)
+		logf("Picture %s not uploaded, will try again: %v", name, err)
 		return coverResult{Failed: true, Print: print}
 	})
-	return c.ownUsable(now)
+	return state.usable(now)
 }
 
-func (c *Covers) ownUsable(now time.Time) string {
-	if c.ownEntry != nil && now.Before(c.ownEntry.Gone) {
-		return c.ownEntry.URL
+func (s *fileState) usable(now time.Time) string {
+	if s.entry != nil && now.Before(s.entry.Gone) {
+		return s.entry.URL
 	}
 	return ""
 }

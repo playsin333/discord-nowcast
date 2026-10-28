@@ -381,17 +381,19 @@ func (e *Engine) tick() string {
 	return mediaError
 }
 
-// The picture for the status: the track's cover, or the settings' own
-// picture until the cover comes; "" for none.
+// The picture for the status: the track's cover, or until it comes (or
+// when there is none) the picture picked for that, or the settings' link;
+// "" for none.
 func (e *Engine) image(track *Track, settings *Settings) string {
-	cover := ""
 	if settings.Covers() {
-		cover = e.covers.Find(track, settings)
+		if cover := e.covers.Find(track, settings); cover != "" {
+			return cover
+		}
 	}
-	if cover == "" {
-		return settings.Image
+	if picked := e.covers.FindFile(settings.FallbackPicturePath()); picked != "" {
+		return picked
 	}
-	return cover
+	return settings.Image
 }
 
 // One's own status: sent when it is set or changed, or its picture comes,

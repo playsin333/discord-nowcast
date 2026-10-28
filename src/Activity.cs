@@ -95,12 +95,16 @@ namespace Nowcast
             return activity;
         }
 
-        // The picture for the status: the track's cover, or the settings' own
-        // picture until the cover comes; null for none.
+        // The picture for the status: the track's cover, or until it comes (or
+        // when there is none) the picture picked for that, or the settings'
+        // link; null for none.
         public static string Image(Track track, Settings settings)
         {
             var cover = settings.Covers ? Covers.Find(track, settings) : null;
-            return cover ?? (settings.Image != "" ? settings.Image : null);
+            if (cover != null) return cover;
+            var picked = Covers.FindFile(Settings.FallbackPicturePath);
+            if (picked != null) return picked;
+            return settings.Image != "" ? settings.Image : null;
         }
 
         static void Lines(Dictionary<string, object> activity, string details, string state, int inList)

@@ -67,6 +67,7 @@ var rules = []*rule{
 	browser(`opera`, "Opera"),
 	browser(`vivaldi`, "Vivaldi"),
 	browser(`brave`, "Brave"),
+	browser(`thorium`, "Thorium"),
 	// The KDE browser extension speaks for whichever browser it is in.
 	browser(`plasma-browser-integration`, t("Браузер", "Browser")),
 }

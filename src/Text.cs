@@ -72,6 +72,7 @@ namespace Nowcast
         public static readonly string CoverPlayer = T("Из плеера (своя обложка видна)", "From the player (your own cover shows)");
         public static readonly string CoverITunes = T("Из iTunes (быстрее, без загрузки)", "From iTunes (quicker, no upload)");
         public static readonly string CoverNone = T("Без обложки", "No cover");
+        public static readonly string FallbackLabel = T("Картинка, если у трека нет обложки:", "Picture when a track has no cover:");
         public static readonly string ButtonsOption = T("Кнопка «Слушать на …»", "\"Listen on …\" button");
         public static readonly string ShowPausedOption = T("Не убирать статус на паузе", "Keep the status on pause");
         public static readonly string HideAlbumOption = T("Убрать альбом", "Hide the album");

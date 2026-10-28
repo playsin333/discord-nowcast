@@ -1,6 +1,5 @@
 using System;
 using System.Drawing;
-using System.IO;
 using System.Windows.Forms;
 using Strings = Nowcast.Text;
 
@@ -20,13 +19,7 @@ namespace Nowcast
         readonly TextBox title = Line();
         readonly TextBox line2 = Line();
         readonly Label unclean = new Label { Text = Strings.OwnUnclean, AutoSize = true, MaximumSize = new Size(330, 0), ForeColor = Color.FromArgb(0xF2, 0x3F, 0x43), Visible = false };
-        readonly PictureBox picture = new PictureBox
-        {
-            Size = new Size(96, 96),
-            SizeMode = PictureBoxSizeMode.Zoom,
-            BackColor = Theme.Field,
-            Margin = new Padding(0, 3, 10, 0),
-        };
+        readonly PicturePicker picture = new PicturePicker(Settings.OwnPicturePath, "Own picture");
         readonly NumericUpDown hours = Number(Settings.MaxOwnMinutes / 60);
         readonly NumericUpDown minutes = Number(59);
         // The title and the time are saved once typing or clicking stops, not
@@ -65,17 +58,7 @@ namespace Nowcast
             layout.Controls.Add(unclean);
 
             layout.Controls.Add(Caption(Strings.OwnPictureLabel));
-            var pictureRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
-            pictureRow.Controls.Add(picture);
-            var pictureButtons = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false };
-            var pick = Flat(Strings.OwnPick, false);
-            pick.Click += delegate { Pick(); };
-            var remove = Flat(Strings.OwnRemove, false);
-            remove.Click += delegate { RemovePicture(); };
-            pictureButtons.Controls.Add(pick);
-            pictureButtons.Controls.Add(remove);
-            pictureRow.Controls.Add(pictureButtons);
-            layout.Controls.Add(pictureRow);
+            layout.Controls.Add(picture);
 
             layout.Controls.Add(Caption(Strings.OwnTimeLabel));
             var timeRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
@@ -118,7 +101,7 @@ namespace Nowcast
             unclean.Visible = !Settings.IsClean(title.Text) || !Settings.IsClean(line2.Text);
             hours.Value = settings.OwnMinutes / 60;
             minutes.Value = settings.OwnMinutes % 60;
-            ShowPicture();
+            picture.ShowPicture();
             isLoading = false;
         }
 
@@ -143,59 +126,6 @@ namespace Nowcast
                 s.OwnLine2 = second;
                 s.OwnMinutes = total;
             });
-        }
-
-        // Any picture Windows can open, made as small as a cover and kept in its own file.
-        void Pick()
-        {
-            using (var dialog = new OpenFileDialog { Filter = Strings.OwnPictures + "|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp|*.*|*.*" })
-            {
-                if (dialog.ShowDialog(this) != DialogResult.OK) return;
-                try
-                {
-                    var bytes = CoverImage.FromFile(dialog.FileName);
-                    Directory.CreateDirectory(Log.Folder);
-                    File.WriteAllBytes(Settings.OwnPicturePath, bytes);
-                    Log.Write("Own picture picked: " + bytes.Length / 1024 + " KB");
-                }
-                catch (Exception e)
-                {
-                    MessageBox.Show(this, string.Format(Strings.OwnPictureFailed, e.Message), "discord-nowcast", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
-            }
-            ShowPicture();
-        }
-
-        void RemovePicture()
-        {
-            try
-            {
-                File.Delete(Settings.OwnPicturePath);
-            }
-            catch (Exception e)
-            {
-                Log.Write("Own picture not removed: " + e.Message);
-            }
-            ShowPicture();
-        }
-
-        // From a copy in memory: the file stays free to be replaced.
-        void ShowPicture()
-        {
-            var old = picture.Image;
-            picture.Image = null;
-            if (old != null) old.Dispose();
-            try
-            {
-                if (File.Exists(Settings.OwnPicturePath))
-                {
-                    picture.Image = Image.FromStream(new MemoryStream(File.ReadAllBytes(Settings.OwnPicturePath)));
-                }
-            }
-            catch (Exception e)
-            {
-                Log.Write("Own picture not shown: " + e.Message);
-            }
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -257,7 +187,7 @@ namespace Nowcast
         }
 
         // A flat button: the accent color for the main one, the field color otherwise.
-        static Button Flat(string text, bool isMain)
+        public static Button Flat(string text, bool isMain)
         {
             var button = new Button
             {

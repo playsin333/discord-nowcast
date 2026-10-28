@@ -314,70 +314,79 @@ namespace Nowcast
             };
         }
 
-        // One's own status's picture, from its file: uploaded like a cover,
-        // tried again the same way and renewed before the host deletes it.
-        // The file is told apart by its time and size, not read every round.
-        static string ownPrint;
-        static Entry ownEntry;
-        static Task<Result> ownJob;
-        static DateTime ownRetryAt;
-        static int ownFailures;
+        // A picture of one's own from a file: one's own status's, or the one
+        // shown when a track has no cover. Uploaded like a cover, tried again
+        // the same way and renewed before the host deletes it. The file is
+        // told apart by its time and size, not read every round.
+        class FileState
+        {
+            public string Print;
+            public Entry Entry;
+            public Task<Result> Job;
+            public DateTime RetryAt;
+            public int Failures;
+        }
+
+        static readonly Dictionary<string, FileState> files = new Dictionary<string, FileState>();
 
         public static string FindFile(string path)
         {
             var now = Now();
+            FileState state;
+            if (!files.TryGetValue(path, out state)) files[path] = state = new FileState();
             var file = new FileInfo(path);
             var print = file.Exists ? file.LastWriteTimeUtc.Ticks + ":" + file.Length : null;
-            if (print != ownPrint)
+            if (print != state.Print)
             {
-                ownPrint = print;
-                ownEntry = null;
-                ownFailures = 0;
-                ownRetryAt = DateTime.MinValue;
+                state.Print = print;
+                state.Entry = null;
+                state.Failures = 0;
+                state.RetryAt = DateTime.MinValue;
             }
             if (print == null) return null;
-            if (ownJob != null)
+            if (state.Job != null)
             {
-                if (!ownJob.IsCompleted) return OwnUsable(now);
-                var result = ownJob.Result;
-                ownJob = null;
+                if (!state.Job.IsCompleted) return FileUsable(state, now);
+                var result = state.Job.Result;
+                state.Job = null;
                 // A picture picked since is not this one.
                 if (result.Print == print)
                 {
                     if (result.Entry != null)
                     {
-                        ownEntry = result.Entry;
-                        ownFailures = 0;
+                        state.Entry = result.Entry;
+                        state.Failures = 0;
                     }
                     else
                     {
-                        ownRetryAt = now.AddSeconds(Math.Min(60, 1 << ++ownFailures));
+                        state.RetryAt = now.AddSeconds(Math.Min(60, 1 << ++state.Failures));
                     }
                 }
             }
-            if (ownEntry != null && now < ownEntry.Renew) return ownEntry.Url;
-            if (now < ownRetryAt) return OwnUsable(now);
-            ownJob = Task.Run(delegate
+            if (state.Entry != null && now < state.Entry.Renew) return state.Entry.Url;
+            if (now < state.RetryAt) return FileUsable(state, now);
+            var name = Path.GetFileName(path);
+            state.Job = Task.Run(delegate
             {
                 try
                 {
                     var entry = Uploaded(UploadOwn(File.ReadAllBytes(path)));
-                    Log.Write("Own picture: " + entry.Url);
+                    Log.Write("Picture " + name + ": " + entry.Url);
                     return new Result { Entry = entry, Print = print };
                 }
                 catch (Exception e)
                 {
-                    Log.Write("Own picture not uploaded, will try again: " + Message(e));
+                    Log.Write("Picture " + name + " not uploaded, will try again: " + Message(e));
                     return new Result { Failed = true, Print = print };
                 }
             });
-            ownJob.ContinueWith(t => Notify());
-            return OwnUsable(now);
+            state.Job.ContinueWith(t => Notify());
+            return FileUsable(state, now);
         }
 
-        static string OwnUsable(DateTime now)
+        static string FileUsable(FileState state, DateTime now)
         {
-            return ownEntry != null && now < ownEntry.Gone ? ownEntry.Url : null;
+            return state.Entry != null && now < state.Entry.Gone ? state.Entry.Url : null;
         }
 
         // In the background: the album art from iTunes. Its links do not expire.

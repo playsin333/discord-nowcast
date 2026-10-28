@@ -7,6 +7,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   check:
     runs-on: windows-latest
@@ -20,6 +23,19 @@ jobs:
       - name: Tests
         shell: pwsh
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/run.ps1
+
+      # In the private working copy only: the exe of the latest main as the
+      # pre-release "dev", one click to try it before a real release:
+      # releases/download/dev/discord-nowcast.exe.
+      - name: Test build
+        if: github.repository == 'playsin333/discord-nowcast-dev' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete dev --cleanup-tag --yes || true
+          gh release create dev discord-nowcast.exe --prerelease --target "$GITHUB_SHA" --title "Тестовая сборка" \
+            --notes "Последний main dev-репозитория (${GITHUB_SHA::7}), не релиз."
 
   linux:
     runs-on: ubuntu-latest

@@ -43,8 +43,10 @@ type Settings struct {
 	OwnMinutes   int
 	// A JPEG, PNG, GIF or WebP file for one's own status; "" is own-picture next to config.json.
 	OwnPicture string
-	Hide       []string
-	Names      map[string]string
+	// The picture for a track with no cover, the same way; "" is fallback-picture.
+	FallbackPicture string
+	Hide            []string
+	Names           map[string]string
 	// The order "names" came in: a later name wins, as on Windows.
 	nameOrder []string
 }
@@ -153,6 +155,9 @@ func (s *Settings) apply(data []byte) error {
 	if v, ok := str("ownPicture"); ok {
 		s.OwnPicture = v
 	}
+	if v, ok := str("fallbackPicture"); ok {
+		s.FallbackPicture = v
+	}
 	var hide []interface{}
 	if raw, ok := values["hide"]; ok && json.Unmarshal(raw, &hide) == nil {
 		for _, word := range hide {
@@ -225,6 +230,7 @@ func (s *Settings) Save() error {
 		`  "ownLine2": ` + encode(s.OwnLine2),
 		`  "ownMinutes": ` + encode(s.OwnMinutes),
 		`  "ownPicture": ` + encode(s.OwnPicture),
+		`  "fallbackPicture": ` + encode(s.FallbackPicture),
 		`  "hide": ` + encode(hide),
 		`  "names": {` + strings.Join(names, ", ") + `}`,
 	}
@@ -262,9 +268,19 @@ func (s *Settings) ShowsOwn() bool {
 // The picture file of one's own status: ownPicture ("~/" for the home
 // folder), or own-picture next to config.json.
 func (s *Settings) OwnPicturePath() string {
-	path := strings.TrimSpace(s.OwnPicture)
+	return picturePath(s.OwnPicture, "own-picture")
+}
+
+// The picture file for a track with no cover: fallbackPicture, or
+// fallback-picture next to config.json.
+func (s *Settings) FallbackPicturePath() string {
+	return picturePath(s.FallbackPicture, "fallback-picture")
+}
+
+func picturePath(setting, standard string) string {
+	path := strings.TrimSpace(setting)
 	if path == "" {
-		return filepath.Join(folder, "own-picture")
+		return filepath.Join(folder, standard)
 	}
 	path = strings.TrimPrefix(path, "file://")
 	if strings.HasPrefix(path, "~/") {

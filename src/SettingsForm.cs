@@ -17,6 +17,7 @@ namespace Nowcast
         readonly Engine engine;
         readonly ComboBox inList = Choices();
         readonly ComboBox coverSource = Choices();
+        readonly PicturePicker fallback = new PicturePicker(Settings.FallbackPicturePath, "Fallback picture");
         readonly Theme.CheckBox buttons = new Theme.CheckBox { Text = Strings.ButtonsOption };
         readonly Theme.CheckBox showPaused = new Theme.CheckBox { Text = Strings.ShowPausedOption };
         readonly Theme.CheckBox hideAlbum = new Theme.CheckBox { Text = Strings.HideAlbumOption };
@@ -62,6 +63,8 @@ namespace Nowcast
             layout.Controls.Add(inList);
             layout.Controls.Add(Note(Strings.CoverLabel));
             layout.Controls.Add(coverSource);
+            layout.Controls.Add(Note(Strings.FallbackLabel));
+            layout.Controls.Add(fallback);
             layout.Controls.Add(buttons);
             layout.Controls.Add(showPaused);
             layout.Controls.Add(hideAlbum);
@@ -132,6 +135,7 @@ namespace Nowcast
             hideAlbum.Checked = settings.HideAlbum;
             checkUpdates.Checked = settings.CheckUpdates;
             autostart.Checked = Startup.IsEnabled;
+            fallback.ShowPicture();
 
             // The apps playing now, plus the hidden ones, so they can come back.
             while (sources.Controls.Count > 0) sources.Controls[0].Dispose();

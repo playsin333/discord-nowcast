@@ -38,6 +38,7 @@ namespace Nowcast
             Run("one upload for an album", AlbumOnce);
             Run("cover settings changed", CoverSettingsChanged);
             Run("cover in place of the settings' picture", CoverOverImage);
+            Run("picked picture when there is no cover", FallbackPicture);
             Run("hosts that failed are left out", HostsLeftOut);
             Run("own status", OwnStatus);
             Run("own status settings", OwnSettings);
@@ -429,6 +430,36 @@ namespace Nowcast
             });
         }
 
+        // The picture picked for a track with no cover, until the cover comes.
+        static void FallbackPicture()
+        {
+            CoversWith(delegate
+            {
+                var path = Settings.FallbackPicturePath;
+                try
+                {
+                    Directory.CreateDirectory(Log.Folder);
+                    File.WriteAllBytes(path, new byte[] { 9 });
+                    var track = Track("SoundCloud.exe", "A", "B");
+                    var settings = new Settings { Image = "https://example.com/own.png" };
+                    picture = null;
+                    Activity.Image(track, settings);
+                    Settle();
+                    var image = Activity.Image(track, settings);
+                    Check(image != null && image.StartsWith("https://host/9"), "the picked picture, before the settings' link: " + image);
+                    picture = new byte[] { 4 };
+                    Cover(track, settings, 10);
+                    Check(Activity.Image(track, settings).StartsWith("https://host/4"), "then the cover");
+                    File.Delete(path);
+                    Check(Activity.Image(Track("SoundCloud.exe", "C", "D"), new Settings { CoverSource = "none", Image = "https://example.com/own.png" }) == "https://example.com/own.png", "removed: the settings' link");
+                }
+                finally
+                {
+                    File.Delete(path);
+                }
+            });
+        }
+
         static void HostsLeftOut()
         {
             var order = typeof(Hosts).GetMethod("Order", BindingFlags.NonPublic | BindingFlags.Static);
@@ -559,10 +590,15 @@ namespace Nowcast
             }
         }
 
+        // Waits for the uploads of pictures from files.
         static void Settle()
         {
-            var job = (System.Threading.Tasks.Task)typeof(Covers).GetField("ownJob", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
-            if (job != null) job.Wait();
+            var files = (System.Collections.IDictionary)typeof(Covers).GetField("files", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+            foreach (var state in files.Values)
+            {
+                var job = (System.Threading.Tasks.Task)state.GetType().GetField("Job").GetValue(state);
+                if (job != null) job.Wait();
+            }
         }
 
         static Track Track(string app, string artist, string title)

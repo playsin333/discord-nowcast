@@ -76,6 +76,7 @@ namespace Nowcast
             Browser(@"opera", "Opera"),
             Browser(@"vivaldi", "Vivaldi"),
             Browser(@"brave", "Brave"),
+            Browser(@"thorium", "Thorium"),
         };
 
         public static SourceInfo Resolve(string app, Settings settings)

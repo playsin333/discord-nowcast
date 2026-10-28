@@ -202,8 +202,8 @@ func TestOwnPicture(t *testing.T) {
 	}
 	writePNG(t, path, 40, 40, color.NRGBA{200, 10, 10, 255})
 	settle := func() {
-		if r.c.ownJob != nil {
-			<-r.c.ownJob.done
+		if job := r.c.files[path].job; job != nil {
+			<-job.done
 		}
 	}
 	r.networkDown = true
@@ -359,5 +359,29 @@ func TestUploadHedge(t *testing.T) {
 	got, err := upload([]byte{1})
 	if err != nil || got.URL != "https://quick" || time.Since(begin) > time.Second {
 		t.Fatalf("the next host starts alongside a slow one: %+v %v", got, err)
+	}
+}
+
+func TestFallbackPicture(t *testing.T) {
+	r := newRig()
+	e := &Engine{covers: r.c}
+	s := defaultSettings()
+	s.Image = "https://example.com/own.png"
+	s.FallbackPicture = filepath.Join(t.TempDir(), "fallback.png")
+	writePNG(t, s.FallbackPicture, 40, 40, color.NRGBA{9, 9, 9, 255})
+	track := song("Song")
+	e.image(track, s)
+	<-r.c.files[s.FallbackPicture].job.done
+	if got := e.image(track, s); !strings.HasPrefix(got, "https://host/") {
+		t.Fatalf("the picked picture, before the settings' link: %q", got)
+	}
+	r.picture = &picture{URL: "https://i.scdn.co/image/x"}
+	if got := r.cover(track, s, 10); got != "https://i.scdn.co/image/x" || e.image(track, s) != got {
+		t.Fatalf("then the cover: %q", got)
+	}
+	os.Remove(s.FallbackPicture)
+	s.CoverSource = "none"
+	if got := e.image(song("Other"), s); got != s.Image {
+		t.Fatalf("removed: the settings' link: %q", got)
 	}
 }

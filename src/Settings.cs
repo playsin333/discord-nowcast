@@ -28,6 +28,8 @@ namespace Nowcast
         public const string OwnClientId = "1565004020647727184";
         // The picture of one's own status, made ready when it is picked.
         public static readonly string OwnPicturePath = Path.Combine(Log.Folder, "own-picture");
+        // The picture shown when a track has no cover, made ready when it is picked.
+        public static readonly string FallbackPicturePath = Path.Combine(Log.Folder, "fallback-picture");
         // How long one's own status may say it has been going: 100 hours.
         public const int MaxOwnMinutes = 100 * 60;
 
