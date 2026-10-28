@@ -1,5 +1,5 @@
-# Builds discord-nowcast.exe and runs the checks in tests\ on every push and
-# pull request: a red cross on the commit when either fails. No release.
+# Builds discord-nowcast.exe and the Linux program and runs their checks on
+# every push and pull request: a red cross on the commit when any fails. No release.
 name: Check
 
 on:
@@ -20,3 +20,33 @@ jobs:
       - name: Tests
         shell: pwsh
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/run.ps1
+
+  linux:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: linux/go.mod
+          cache-dependency-path: linux/go.sum
+
+      - name: Format and vet
+        run: |
+          unformatted=$(gofmt -l .)
+          [ -z "$unformatted" ] || { echo "gofmt: $unformatted"; exit 1; }
+          go vet ./...
+
+      # Under a session bus of its own: the tests put a player on it.
+      - name: Tests
+        run: |
+          command -v dbus-run-session || { sudo apt-get update && sudo apt-get install -y dbus-daemon; }
+          LANG=C.UTF-8 dbus-run-session -- go test -race -count=1 ./...
+
+      - name: Build
+        run: |
+          CGO_ENABLED=0 GOARCH=amd64 go build -o /dev/null .
+          CGO_ENABLED=0 GOARCH=arm64 go build -o /dev/null .

@@ -29,11 +29,15 @@ namespace Nowcast
         bool timelinePlaying;
         long? timelineStart;
         bool? sentPlaying;
-        bool sentCover;
+        // The picture in the status now: a cover's link, the settings' own picture, or null.
+        string sentImage;
         DateTime sentAt = DateTime.MinValue;
         DateTime nextConnect = DateTime.MinValue;
         DateTime? resendAt;
         string shownKey;
+        // One's own status as last set, and when it started by its time.
+        string ownKey;
+        long ownStart;
         // The track last seen and when, to see how long its status took.
         string seenKey;
         DateTime seenAt;
@@ -171,7 +175,11 @@ namespace Nowcast
 
             var sessions = Media.Read(settings);
             var isHidden = DateTime.Now < HiddenUntil;
-            var track = isHidden ? null : Pick(sessions);
+            // One's own status takes the place of whatever plays.
+            var isOwn = !isHidden && settings.ShowsOwn;
+            var track = isHidden || isOwn ? null : Pick(sessions);
+            // Turned on again later: its time counts from then.
+            if (!isOwn) ownKey = null;
             Sessions = sessions;
 
             if (discord.IsConnected && !discord.IsAlive)
@@ -182,10 +190,12 @@ namespace Nowcast
             }
             // Each service has its own application, named after it: another
             // service means another connection. Closing one clears its status.
-            var clientId = track != null ? settings.ClientIdFor(track.Source) : (discord.ClientId ?? settings.ClientId);
+            var clientId = isOwn ? settings.OwnClientIdFor()
+                : track != null ? settings.ClientIdFor(track.Source)
+                : (discord.ClientId ?? settings.ClientId);
             if (discord.IsConnected && discord.ClientId != clientId)
             {
-                Log.Write("Switching to the Discord application of " + track.Source.Name);
+                Log.Write("Switching to the Discord application of " + (isOwn ? "one's own status" : track.Source.Name));
                 discord.Dispose();
                 nextConnect = DateTime.Now;
             }
@@ -206,22 +216,25 @@ namespace Nowcast
 
             Report(!discord.IsConnected ? (discord.IsDenied ? Text.DiscordElevated : Text.DiscordOff)
                 : isHidden ? string.Format(Text.HiddenUntil, HiddenUntil)
+                : isOwn ? string.Format(Text.OwnShown, settings.OwnTitle.Trim())
                 : track == null ? Text.NothingPlaying
                 : Describe(track));
             if (!discord.IsConnected) return;
 
+            if (isOwn)
+            {
+                Own();
+                return;
+            }
             var key = track == null ? "none" : track.Key;
+            if (track != null && seenKey != key)
+            {
+                seenKey = key;
+                seenAt = DateTime.Now;
+            }
             // The cover is looked for as soon as the track is seen, even when its
             // status has to wait for its turn. The status itself never waits for it.
-            if (track != null && settings.Covers)
-            {
-                if (seenKey != key)
-                {
-                    seenKey = key;
-                    seenAt = DateTime.Now;
-                }
-                Covers.Find(track, settings);
-            }
+            var image = track == null ? null : Activity.Image(track, settings);
             var start = track == null ? null : StartFor(track);
             bool? playing = track == null ? (bool?)null : track.IsPlaying;
             // A seek: the start of the track moved by more than 3 seconds.
@@ -230,8 +243,10 @@ namespace Nowcast
             // not send the same track over and over.
             if (jumped && key == sentKey && (DateTime.Now - jumpedAt).TotalSeconds < 30) jumped = false;
             var isResend = resendAt.HasValue && DateTime.Now >= resendAt.Value;
-            // A cover that was not there when the track started may have come since.
-            var coverCame = key == sentKey && track != null && !sentCover && settings.Covers && Covers.IsDue(key);
+            // Another picture for the same track: a cover that was not there when
+            // the track started, one in place of the settings' own picture or of
+            // an iTunes cover, or a new link for one the host is about to delete.
+            var coverCame = key == sentKey && track != null && image != null && image != sentImage;
             var changed = key != sentKey || playing != sentPlaying || jumped || isResend || coverCame;
             // Discord takes at most 5 updates per 20 seconds.
             if (!changed || (DateTime.Now - sentAt).TotalSeconds < 4) return;
@@ -247,10 +262,6 @@ namespace Nowcast
                 else
                 {
                     var activity = Activity.Build(track, start, settings);
-                    var hasCover = activity.ContainsKey("assets") && ((Dictionary<string, object>)activity["assets"]).ContainsKey("large_image");
-                    // Looked again and still none: nothing new to send.
-                    if (coverCame && !hasCover && key == sentKey && playing == sentPlaying && !jumped && !isResend) return;
-                    sentCover = hasCover;
                     if (discord.SetActivity(activity) != null && Activity.UseLinks)
                     {
                         // An older Discord may not know the links on the cover and title.
@@ -263,9 +274,50 @@ namespace Nowcast
                 }
                 shownKey = track == null ? null : key;
                 sentKey = key;
+                sentImage = image;
                 if (jumped) jumpedAt = DateTime.Now;
                 sentStart = start;
                 sentPlaying = playing;
+                sentAt = DateTime.Now;
+            }
+            catch (Exception e)
+            {
+                Log.Write("Lost Discord: " + e.Message);
+                discord.Dispose();
+                nextConnect = DateTime.Now.AddSeconds(5);
+            }
+        }
+
+        // One's own status: sent when it is set or changed, or its picture comes,
+        // with the same limit as a track's. Its time counts from when it was set.
+        void Own()
+        {
+            var title = settings.OwnTitle.Trim();
+            var key = "own|" + settings.OwnType + "|" + title + "|" + settings.OwnLine2.Trim() + "|" + settings.OwnMinutes;
+            if (key != ownKey)
+            {
+                ownKey = key;
+                ownStart = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - settings.OwnMinutes * 60000L;
+            }
+            var image = Covers.FindFile(Settings.OwnPicturePath);
+            var isResend = resendAt.HasValue && DateTime.Now >= resendAt.Value;
+            var changed = key != sentKey || image != sentImage || isResend;
+            if (!changed || (DateTime.Now - sentAt).TotalSeconds < 4) return;
+            if (isResend) resendAt = null;
+            try
+            {
+                var activity = Activity.Own(settings.OwnType, title, settings.OwnLine2, ownStart, image);
+                if (discord.SetActivity(activity) != null && Activity.UseLinks)
+                {
+                    Activity.UseLinks = false;
+                    discord.SetActivity(Activity.Own(settings.OwnType, title, settings.OwnLine2, ownStart, image));
+                }
+                Log.Write("Status: own, " + title + (image != null ? "" : " (no picture)"));
+                shownKey = null;
+                sentKey = key;
+                sentImage = image;
+                sentStart = null;
+                sentPlaying = null;
                 sentAt = DateTime.Now;
             }
             catch (Exception e)

@@ -18,6 +18,29 @@ namespace Nowcast
         // picture without a strip is sent as it came.
         const int MaxSide = 300;
 
+        // A picture of one's own from a file of any kind Windows reads: no
+        // bigger than a cover, as PNG when it has transparent parts, else JPEG.
+        public static byte[] FromFile(string path)
+        {
+            using (var source = new Bitmap(path))
+            {
+                var isOpaque = !Image.IsAlphaPixelFormat(source.PixelFormat);
+                var scale = Math.Min(1.0, (double)MaxSide / Math.Max(source.Width, source.Height));
+                var width = Math.Max(1, (int)Math.Round(source.Width * scale));
+                var height = Math.Max(1, (int)Math.Round(source.Height * scale));
+                using (var picture = new Bitmap(width, height, isOpaque ? PixelFormat.Format24bppRgb : PixelFormat.Format32bppArgb))
+                {
+                    using (var canvas = Graphics.FromImage(picture))
+                    {
+                        canvas.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                        canvas.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                        canvas.DrawImage(source, new Rectangle(0, 0, width, height));
+                    }
+                    return Encode(picture, isOpaque);
+                }
+            }
+        }
+
         public static byte[] Prepare(byte[] image)
         {
             try

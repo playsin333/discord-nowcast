@@ -6,17 +6,17 @@
 
 **Show the track from any app in your Discord status.**
 
-Yandex Music, Spotify, SoundCloud, VK, Telegram, YouTube in a browser, AIMP, local files: anything that plays on Windows.
+Yandex Music, Spotify, SoundCloud, VK, Telegram, YouTube in a browser, AIMP, local files: anything that plays on Windows. There is a [Linux version](#linux-beta) (beta).
 
 [![release](https://img.shields.io/github/v/release/playsin333/discord-nowcast?color=5865f2)](https://github.com/playsin333/discord-nowcast/releases/latest)
 [![downloads](https://img.shields.io/github/downloads/playsin333/discord-nowcast/total?color=3d3c38)](https://github.com/playsin333/discord-nowcast/releases)
-![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-3d3c38)
+![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux%20(beta)-3d3c38)
 [![discord](https://img.shields.io/badge/discord-server-5865f2)](https://discord.gg/pHzmvghmJR)
 [![license](https://img.shields.io/badge/license-MIT-3d3c38)](LICENSE)
 
 [Русский](README.md) · **English**
 
-**[⬇ Download discord-nowcast.exe](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast.exe)** · [Discord server](https://discord.gg/pHzmvghmJR) · [Discussions](https://github.com/playsin333/discord-nowcast/discussions) · [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml)
+**[⬇ Download discord-nowcast.exe](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast.exe)** · [Linux](#linux-beta) · [Discord server](https://discord.gg/pHzmvghmJR) · [Discussions](https://github.com/playsin333/discord-nowcast/discussions) · [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml)
 
 </div>
 
@@ -73,6 +73,7 @@ The raven by the clock, at the bottom right of the screen, is how you control it
 | Sources in the status | a checkbox per app playing now; clear one to keep, say, YouTube in the browser out of the status |
 | What Windows sees | every app reporting a track right now, playing or paused; a click copies its app ID |
 | Start with Windows | on by default |
+| Own status… | instead of the track, "Listening to nowcast", "Watching nowcast" or "Playing nowcast" with two lines of your own (the second is optional), a picture and a time (how long it has been going, up to 100 hours). With *Playing* Discord puts nowcast under the header and the lines go below it. A click on the picture or the first line in Discord opens the nowcast server. Links, casino ads and 18+ in the lines are not shown. A check by the item means it is on |
 | Settings… | the settings window: what the member list shows, where the cover comes from, button, pause, sources, autostart, updates. Changes apply at once |
 | Open log | what was sent to Discord and any errors |
 | Copy diagnostics | copies all a support question needs: the program and Windows versions, what Windows sees, whether Discord was found, the settings and the end of the log. Paste it into your post in the help forum. Your user folder name is masked |
@@ -94,8 +95,34 @@ Most of these are in the settings window. All of them live in `config.json` in `
 | `hideAlbum` | `true` removes the status's third line with the album (in the window: *Hide the album*) |
 | `checkUpdates` | `false` stops the automatic update check |
 | `image` | a picture URL to show when the player gives no cover |
+| `own`, `ownType`, `ownTitle`, `ownLine2`, `ownMinutes` | your own status (the *Own status* window): on or off, the type (`listening`, `watching`, `playing`), line 1, line 2, how many minutes it has been going (up to 6000). The picture lives next to it, in the `own-picture` file |
+| `ownPicture` | Linux only: the path to your own status's picture |
 | `hide` | apps never to show: `["chrome", "Telegram"]` |
 | `names` | your own source names: `{"chrome": "YouTube"}` |
+
+## Linux (beta)
+
+There is a Linux version: the same status, the same Discord applications for the services, covers, the button and your own status. It is a beta: try it and tell us on the [server](https://discord.gg/pHzmvghmJR) what works and what does not.
+
+**Install.** Pick the one for your distribution:
+
+- Ubuntu, Debian, Mint, Pop!_OS: [discord-nowcast_amd64.deb](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast_amd64.deb), then `sudo apt install ./discord-nowcast_amd64.deb`;
+- Fedora, openSUSE: [discord-nowcast.x86_64.rpm](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast.x86_64.rpm), then `sudo dnf install ./discord-nowcast.x86_64.rpm`;
+- anything else: the [AppImage](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast-x86_64.AppImage) (make it executable in its properties and run it) or the plain one-file program, [discord-nowcast-linux-amd64](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast-linux-amd64).
+
+For ARM (Raspberry Pi and the like) the [release](https://github.com/playsin333/discord-nowcast/releases/latest) has `_arm64.deb`, `.aarch64.rpm` and `discord-nowcast-linux-arm64`.
+
+Start discord-nowcast from the app menu (or the file). On its first run it adds itself to autostart; the tray menu turns that off.
+
+**How it sees the track.** Through MPRIS, the common Linux way for players to say what plays. Spotify, browsers (Firefox, Chrome, Chromium, Brave, Yandex Browser), Telegram, VLC, Rhythmbox, Strawberry, Elisa and nearly every other player do it. A site in a browser tab is told by the address of the page or its picture: YouTube, YouTube Music, SoundCloud, Yandex Music, VK, Twitch. When a browser gives no address, the status shows the browser's name; `names` helps then.
+
+**The tray icon.** KDE, Cinnamon, XFCE, MATE and Budgie show the raven by themselves. GNOME (Ubuntu, Fedora) has no tray icons out of the box: it needs the [AppIndicator](https://extensions.gnome.org/extension/615/appindicator-support/) extension (Ubuntu has it on already; on Fedora `sudo dnf install gnome-shell-extension-appindicator`, then log out and in). Without the icon the program works all the same, there is just no menu to see. The menu: the current track, *Hide status for an hour*, *Own status instead of the track*, autostart, settings, log, diagnostics, exit.
+
+**Discord from Flatpak and Snap** is found by itself, nothing to set up. Discord in a browser does not work, as on Windows. With Vesktop, its arRPC (statuses from programs) has to be on.
+
+**Settings** live in `~/.config/discord-nowcast/config.json`, with the keys of the table above. There is no settings window on Linux: *Open settings* in the menu opens this file, and the program picks up the changes as soon as it is saved. For your own status, `ownPicture` sets the picture: a path to any image, such as `"~/Pictures/avatar.png"`. The program scales it down and uploads it itself. The log is `~/.config/discord-nowcast/log.txt`. *Diagnostics* saves and opens the text for a support question; `discord-nowcast --diagnostics` prints the same in a terminal.
+
+**Updates.** The program does not update itself on Linux: when a new version is out, the menu shows *Version … is out*. A package updates the way it was installed; an AppImage is downloaded again.
 
 ## How it works
 
@@ -103,7 +130,7 @@ Windows already knows what is playing: it is the track card that pops up when yo
 
 - **Source name.** Taken from the app's ID. A site installed as an app (SoundCloud or YouTube Music via *Install* in Chrome or Edge) is named as in the Start menu. In a regular browser tab the site is told by the window title: the window whose title holds the track is searched for YouTube, Twitch, SoundCloud and the rest. So the status says SoundCloud, not Chrome.
 - **"Listening to SoundCloud".** Discord puts the name of the application that sent the status after "Listening to". So each service has a Discord application of its own, and discord-nowcast reconnects to the right one when the source changes. YouTube and Twitch go out as "Watching", except YouTube music channels ("Artist - Topic" and VEVO): those read "Listening to YouTube".
-- **Cover art.** It is the picture the player hands to Windows along with the track, the same one the volume flyout shows, so the status never has another track's cover. If Windows still holds the previous track's picture, that is noticed and the picture is read again. When a player puts its logo under the cover on a transparent strip (Spotify does), the strip is cut off and the status has the cover alone. Discord only shows pictures by URL, so it is uploaded to a temporary host: [uguu.se](https://uguu.se), or [x0.at](https://x0.at) or [litterbox.catbox.moe](https://litterbox.catbox.moe) when it is down. If the player gives no picture, or no host takes it, the track is looked up in the open iTunes catalog: when the same artist and title are there, the album art is used. Failing that, Discord shows the application icon. With *From iTunes* in the settings the album art is looked up first, and the player's picture is used only when the track is not there. The status of a new track does not wait for its cover: it goes at once, and the cover follows a couple of seconds later. To keep the upload quick, the picture is scaled down to 300 pixels and saved as a JPEG (when nothing in it is transparent), and when a host answers slowly, the next one joins in at once.
+- **Cover art.** It is the picture the player hands to Windows along with the track, the same one the volume flyout shows, so the status never has another track's cover. If Windows still holds the previous track's picture, that is noticed and the picture is read again. When a player puts its logo under the cover on a transparent strip (Spotify does), the strip is cut off and the status has the cover alone. Discord only shows pictures by URL, so it is uploaded to the program's own server (`nowcast-covers.playsin333.workers.dev`, keeps a cover 14 days, [code](server/worker.js)), or to the temporary hosts [uguu.se](https://uguu.se) or [litterbox.catbox.moe](https://litterbox.catbox.moe) when it does not answer. When the network is gone, it tries again while the track plays, and a link on a temporary host is renewed before the host deletes it. If the player gives no picture, or no host takes it, the track is looked up in the open iTunes catalog: when the same artist and title are there, the album art is used. Failing that, Discord shows the application icon. With *From iTunes* in the settings the album art is looked up first, and the player's picture is used only when the track is not there. The status of a new track does not wait for its cover: it goes at once, and the cover follows a couple of seconds later. To keep the upload quick, the picture is scaled down to 300 pixels and saved as a JPEG (when nothing in it is transparent), and when a host answers slowly, the next one joins in at once.
 - **The button.** Players do not tell Windows the track's link, so "Listen on …" opens a search for the track in the same service; for Yandex Music, Telegram and browsers, a YouTube search (with a Yandex Music link Discord does not show the status to others). Discord does not let you click your own buttons, only other people's.
 - **Rate limit.** Discord accepts at most five updates per 20 seconds, so the status changes at most once every four seconds.
 
@@ -118,7 +145,7 @@ Windows already knows what is playing: it is the track card that pops up when yo
 
 ## Privacy
 
-The artist and title go to Discord, which is the status itself, and to the iTunes search for the cover: with *From the player* only when the player has none or no host takes it (`"coverSearch": false` turns that off), with *From iTunes* for every track. The cover picture from the player is uploaded to uguu.se (or x0.at, litterbox.catbox.moe). *No cover* turns both off. The update check asks GitHub for the latest release. Nothing else is sent anywhere.
+The artist and title go to Discord, which is the status itself, and to the iTunes search for the cover: with *From the player* only when the player has none or no host takes it (`"coverSearch": false` turns that off), with *From iTunes* for every track. The cover picture from the player is uploaded to the program's own server (or uguu.se, litterbox.catbox.moe); the server keeps only the picture itself and, to limit uploads, a hash of the IP address for an hour. *No cover* turns both off. The own status's picture goes to the program's server only and is kept there for two days (uploaded again while the status is on) with a hash of the IP address: a picture against the rules is removed by the author, and its uploader can be shut out. The update check asks GitHub for the latest release. Nothing else is sent anywhere.
 
 ## Building it yourself
 
@@ -132,6 +159,14 @@ The checks (status lines, the button, long titles, the cover, the track time) ru
 
 ```
 powershell -ExecutionPolicy Bypass -File tests\run.ps1
+```
+
+The Linux version is written in Go and lives in `linux`. It is built and checked with (the tests need a D-Bus bus, which `dbus-run-session` gives them):
+
+```
+cd linux
+go build -o discord-nowcast .
+dbus-run-session -- go test ./...
 ```
 
 On GitHub the program is built and checked by itself after every change.

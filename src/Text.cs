@@ -28,6 +28,7 @@ namespace Nowcast
         public static readonly string MediaUnavailable = T("Windows не даёт узнать, что играет", "Windows won't tell what is playing");
         public static readonly string MediaRemoved = T("Урезанная сборка Windows: нет поддержки медиа", "This Windows build has no media support");
         public static readonly string MediaServiceOff = T("Отключена служба Windows (оптимизатор?)", "A Windows service is disabled (a tweaker?)");
+        public static readonly string OwnShown = T("Свой статус: {0}", "Own status: {0}");
         public static readonly string Starting = T("Запускается…", "Starting…");
 
         public static readonly string HideHour = T("Скрыть статус на час", "Hide status for an hour");
@@ -39,6 +40,26 @@ namespace Nowcast
         public static readonly string Paused = T("пауза", "paused");
         public static readonly string Autostart = T("Запускать вместе с Windows", "Start with Windows");
         public static readonly string Settings = T("Настройки…", "Settings…");
+        public static readonly string OwnStatus = T("Свой статус…", "Own status…");
+
+        // The own status window.
+        public static readonly string OwnOn = T("Показывать свой статус вместо трека", "Show my own status instead of the track");
+        public static readonly string OwnNote = T("Клик по картинке или строке 1 открывает сервер nowcast.", "A click on the picture or line 1 opens the nowcast server.");
+        public static readonly string OwnUnclean = T("Не покажется: в строках нельзя ссылки, рекламу казино и 18+.", "Won't show: no links, casino ads or 18+ in the lines.");
+        public static readonly string OwnTypeLabel = T("Тип:", "Type:");
+        public static readonly string OwnListening = T("Слушает nowcast", "Listening to nowcast");
+        public static readonly string OwnWatching = T("Смотрит nowcast", "Watching nowcast");
+        public static readonly string OwnPlaying = T("Играет в nowcast", "Playing nowcast");
+        public static readonly string OwnTitleLabel = T("Строка 1:", "Line 1:");
+        public static readonly string OwnLine2Label = T("Строка 2 (необязательно):", "Line 2 (optional):");
+        public static readonly string OwnPictureLabel = T("Картинка:", "Picture:");
+        public static readonly string OwnPick = T("Выбрать…", "Choose…");
+        public static readonly string OwnRemove = T("Убрать", "Remove");
+        public static readonly string OwnPictures = T("Картинки", "Pictures");
+        public static readonly string OwnPictureFailed = T("Не получилось открыть картинку: {0}", "Could not open the picture: {0}");
+        public static readonly string OwnTimeLabel = T("Сколько уже играет (до 100 ч):", "How long it has been going (up to 100 h):");
+        public static readonly string Hours = T("ч", "h");
+        public static readonly string Minutes = T("мин", "min");
 
         // The settings window.
         public static readonly string StatusHeading = T("Статус в Discord", "Discord status");

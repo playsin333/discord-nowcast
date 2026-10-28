@@ -154,7 +154,7 @@ namespace Nowcast
         }
 
         // The list's lines, closed and open, in the window's colors.
-        void DrawChoice(object sender, DrawItemEventArgs e)
+        public static void DrawChoice(object sender, DrawItemEventArgs e)
         {
             if (e.Index < 0) return;
             var isSelected = (e.State & DrawItemState.Selected) != 0 && (e.State & DrawItemState.ComboBoxEdit) == 0;
@@ -186,7 +186,7 @@ namespace Nowcast
             settings.Save();
         }
 
-        static Label Heading(string text)
+        public static Label Heading(string text)
         {
             return new Label
             {
@@ -197,13 +197,13 @@ namespace Nowcast
             };
         }
 
-        static Label Note(string text)
+        public static Label Note(string text)
         {
             return new Label { Text = text, AutoSize = true, MaximumSize = new Size(330, 0), ForeColor = Theme.Muted };
         }
 
         // A dark drop-down list, drawn by DrawChoice.
-        static ComboBox Choices()
+        public static ComboBox Choices()
         {
             return new ComboBox
             {

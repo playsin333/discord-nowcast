@@ -1,6 +1,6 @@
-# Builds discord-nowcast.exe and publishes a GitHub release for the version
-# in src/Program.cs, with its notes taken from CHANGELOG.md, whenever main
-# gets a version that has none yet.
+# Builds discord-nowcast.exe and the Linux files and publishes a GitHub
+# release for the version in src/Program.cs, with its notes taken from
+# CHANGELOG.md, whenever main gets a version that has none yet.
 name: Release
 
 on:
@@ -8,7 +8,9 @@ on:
     branches: [main]
     paths:
       - src/**
+      - linux/**
       - assets/icon.ico
+      - assets/icon.png
       - build.ps1
       - CHANGELOG.md
       - .github/workflows/release.yml
@@ -18,13 +20,13 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  version:
     # The private working copy (discord-nowcast-dev) never releases.
     if: github.repository == 'playsin333/discord-nowcast'
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      exists: ${{ steps.version.outputs.exists }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,16 +43,62 @@ jobs:
             echo "exists=true" >> "$GITHUB_OUTPUT"
           fi
 
+  windows:
+    needs: version
+    if: needs.version.outputs.exists != 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Build
-        if: steps.version.outputs.exists != 'true'
         shell: pwsh
         run: powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: discord-nowcast.exe
+
+  linux:
+    needs: version
+    if: needs.version.outputs.exists != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache-dependency-path: linux/go.sum
+
+      # The program, .deb, .rpm, AppImage and the PKGBUILD for the AUR, into dist/.
+      - name: Build
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.41.3
+          linux/packaging/package.sh "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  release:
+    needs: [version, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+
       - name: Release
-        if: steps.version.outputs.exists != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           awk -v v="$VERSION" '
             { sub(/\r$/, "") }
@@ -59,4 +107,4 @@ jobs:
             found { print }
           ' CHANGELOG.md | sed '/./,$!d' > notes.md
           [ -s notes.md ] || echo "Version $VERSION" > notes.md
-          gh release create "v$VERSION" discord-nowcast.exe --target "$GITHUB_SHA" --title "discord-nowcast $VERSION" --notes-file notes.md
+          gh release create "v$VERSION" files/* --target "$GITHUB_SHA" --title "discord-nowcast $VERSION" --notes-file notes.md

@@ -44,8 +44,7 @@ namespace Nowcast
             if (!track.IsPlaying) activity["state"] = Limit(state + " · " + Text.Paused);
 
             var assets = new Dictionary<string, object>();
-            var cover = settings.Covers ? Covers.Find(track, settings) : null;
-            var image = cover ?? (settings.Image != "" ? settings.Image : null);
+            var image = Image(track, settings);
             if (image != null)
             {
                 assets["large_image"] = image;
@@ -73,6 +72,35 @@ namespace Nowcast
                 if (assets.ContainsKey("large_image")) assets["large_url"] = url;
             }
             return activity;
+        }
+
+        // One's own status: "Listening to nowcast", "Watching nowcast" (the
+        // application's name in the header) or "Playing" (Discord puts the name
+        // under the header), the two lines, the time it has been going and the
+        // picture; a click on the picture or the first line opens the nowcast server.
+        public static Dictionary<string, object> Own(string type, string title, string line2, long startedAt, string image)
+        {
+            var activity = new Dictionary<string, object> { { "type", type == "playing" ? 0 : type == "watching" ? 3 : 2 }, { "instance", false } };
+            activity["details"] = Limit(title);
+            if (line2.Trim() != "") activity["state"] = Limit(line2);
+            activity["status_display_type"] = 0;
+            activity["timestamps"] = new Dictionary<string, object> { { "start", startedAt } };
+            if (UseLinks) activity["details_url"] = Program.DiscordInvite;
+            if (image != null)
+            {
+                var assets = new Dictionary<string, object> { { "large_image", image } };
+                if (UseLinks) assets["large_url"] = Program.DiscordInvite;
+                activity["assets"] = assets;
+            }
+            return activity;
+        }
+
+        // The picture for the status: the track's cover, or the settings' own
+        // picture until the cover comes; null for none.
+        public static string Image(Track track, Settings settings)
+        {
+            var cover = settings.Covers ? Covers.Find(track, settings) : null;
+            return cover ?? (settings.Image != "" ? settings.Image : null);
         }
 
         static void Lines(Dictionary<string, object> activity, string details, string state, int inList)

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 
 namespace Nowcast
@@ -23,6 +24,12 @@ namespace Nowcast
 
         // The general Discord application, for players without one of their own.
         public const string DefaultClientId = "1562901782579912804";
+        // The application of one's own status: "Playing nowcast".
+        public const string OwnClientId = "1565004020647727184";
+        // The picture of one's own status, made ready when it is picked.
+        public static readonly string OwnPicturePath = Path.Combine(Log.Folder, "own-picture");
+        // How long one's own status may say it has been going: 100 hours.
+        public const int MaxOwnMinutes = 100 * 60;
 
         public string ClientId = DefaultClientId;
         // What the member list shows after "Listening to": source, artist, title, app.
@@ -41,6 +48,14 @@ namespace Nowcast
         public bool HideAlbum = false;
         public bool CheckUpdates = true;
         public string Image = "";
+        // One's own status in place of the track: "Listening to nowcast" (or
+        // watching, playing), two lines of one's own (the second may be empty),
+        // the picture in OwnPicturePath and the time it has been going.
+        public bool Own = false;
+        public string OwnType = "listening";
+        public string OwnTitle = "";
+        public string OwnLine2 = "";
+        public int OwnMinutes = 0;
         public List<string> Hide = new List<string>();
         public Dictionary<string, string> Names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -81,11 +96,43 @@ namespace Nowcast
                 "  \"hideAlbum\": " + json.Serialize(HideAlbum),
                 "  \"checkUpdates\": " + json.Serialize(CheckUpdates),
                 "  \"image\": " + json.Serialize(Image),
+                "  \"own\": " + json.Serialize(Own),
+                "  \"ownType\": " + json.Serialize(OwnType),
+                "  \"ownTitle\": " + json.Serialize(OwnTitle),
+                "  \"ownLine2\": " + json.Serialize(OwnLine2),
+                "  \"ownMinutes\": " + json.Serialize(OwnMinutes),
                 "  \"hide\": " + json.Serialize(Hide),
                 "  \"names\": {" + string.Join(", ", names) + "}",
             };
             Directory.CreateDirectory(Log.Folder);
             File.WriteAllText(FilePath, "{\r\n" + string.Join(",\r\n", lines) + "\r\n}\r\n", new UTF8Encoding(false));
+        }
+
+        // Whether one's own status is on and has a title to show, one without
+        // links and the plain words of casino ads and 18+.
+        public bool ShowsOwn
+        {
+            get { return Own && OwnTitle.Trim().Length >= 2 && IsClean(OwnTitle) && IsClean(OwnLine2); }
+        }
+
+        // Links: "site.com", "t.me/x", "www…", "http…" (a known zone only: "ft.Drake"
+        // and "Mr. Smith" are not links). Words: as they are
+        // written in ads; a spaced or misspelt one gets through, a lazy one does not.
+        static readonly Regex unclean = new Regex(
+            @"https?:|www\.|[\w-]\s?\.\s?(?:com|ru|net|org|io|me|gg|xyz|top|bet|casino|club|site|online|shop|store|pro|info|biz|cc|co|su|ua|kz|by|tv|link|app|dev|fun|win|vip|live|ly|to|рф)\b|" +
+            @"казино|casino|ставк|букмек|1\s?win|1\s?xbet|pin-?up|vavada|вулкан|слоты|джекпот|промокод|" +
+            @"порн|porn|onlyfans|xxx|nsfw|18\+|секс|sex|голые|nudes",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        public static bool IsClean(string text)
+        {
+            return !unclean.IsMatch(text);
+        }
+
+        // The application one's own status goes out under, unless clientId names one of your own.
+        public string OwnClientIdFor()
+        {
+            return ClientId != DefaultClientId ? ClientId : OwnClientId;
         }
 
         // The application a source goes out under: its own one ("Listening to
@@ -154,6 +201,12 @@ namespace Nowcast
             HideAlbum = Get(values, "hideAlbum", HideAlbum);
             CheckUpdates = Get(values, "checkUpdates", CheckUpdates);
             Image = Get<string>(values, "image") ?? Image;
+            Own = Get(values, "own", Own);
+            var ownType = Get<string>(values, "ownType");
+            if (ownType == "listening" || ownType == "watching" || ownType == "playing") OwnType = ownType;
+            OwnTitle = Get<string>(values, "ownTitle") ?? OwnTitle;
+            OwnLine2 = Get<string>(values, "ownLine2") ?? OwnLine2;
+            OwnMinutes = Math.Max(0, Math.Min(MaxOwnMinutes, Get(values, "ownMinutes", OwnMinutes)));
 
             var hide = Get<ArrayList>(values, "hide");
             if (hide != null)
@@ -188,6 +241,12 @@ namespace Nowcast
         {
             object value;
             return values.TryGetValue(key, out value) && value is bool ? (bool)value : fallback;
+        }
+
+        static int Get(Dictionary<string, object> values, string key, int fallback)
+        {
+            object value;
+            return values.TryGetValue(key, out value) && value is int ? (int)value : fallback;
         }
     }
 }

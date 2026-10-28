@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=discord-nowcast
+GenericName=Discord music status
+GenericName[ru]=Музыка в статусе Discord
+Comment=The track from any player in the Discord status
+Comment[ru]=Трек из любого плеера в статусе Discord
+Exec=discord-nowcast
+Icon=discord-nowcast
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=discord;rpc;status;music;mpris;
+StartupNotify=false

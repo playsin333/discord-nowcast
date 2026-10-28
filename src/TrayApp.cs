@@ -22,8 +22,10 @@ namespace Nowcast
         readonly ToolStripMenuItem sessionsItem = new ToolStripMenuItem(Text.WhatWindowsSees);
         readonly ToolStripMenuItem autostartItem = new ToolStripMenuItem(Text.Autostart) { CheckOnClick = true };
         readonly ToolStripMenuItem updateItem = new ToolStripMenuItem(Text.CheckUpdates);
+        readonly ToolStripMenuItem ownItem = new ToolStripMenuItem(Text.OwnStatus);
         Release release;
         SettingsForm settingsForm;
+        OwnForm ownForm;
 
         public TrayApp(bool isUpdate)
         {
@@ -42,6 +44,7 @@ namespace Nowcast
                 else Startup.Disable();
             };
             updateItem.Click += delegate { CheckUpdates(true); };
+            ownItem.Click += delegate { ShowOwn(); };
             sessionsItem.DropDownItems.Add(new ToolStripMenuItem(Text.NoSessions) { Enabled = false });
 
             menu.Items.Add(statusItem);
@@ -50,6 +53,7 @@ namespace Nowcast
             menu.Items.Add(sourcesItem);
             menu.Items.Add(sessionsItem);
             menu.Items.Add(autostartItem);
+            menu.Items.Add(ownItem);
             menu.Items.Add(Text.Settings, null, delegate { ShowSettings(); });
             menu.Items.Add(Text.OpenLog, null, delegate { Program.Open("notepad.exe", Log.FilePath); });
             menu.Items.Add(Text.CopyDiagnostics, null, delegate { CopyDiagnostics(); });
@@ -113,6 +117,7 @@ namespace Nowcast
             RefreshStatus();
             hideItem.Text = DateTime.Now < engine.HiddenUntil ? Text.ShowAgain : Text.HideHour;
             autostartItem.Checked = Startup.IsEnabled;
+            ownItem.Checked = engine.Settings.Own;
             if (release != null) updateItem.Text = string.Format(Text.UpdateTo, release.Tag);
 
             RefreshSources();
@@ -136,6 +141,12 @@ namespace Nowcast
         {
             if (settingsForm == null || settingsForm.IsDisposed) settingsForm = new SettingsForm(engine);
             settingsForm.ShowAgain();
+        }
+
+        void ShowOwn()
+        {
+            if (ownForm == null || ownForm.IsDisposed) ownForm = new OwnForm();
+            ownForm.ShowAgain();
         }
 
         // A checkbox per source: a cleared box keeps that app out of the status.

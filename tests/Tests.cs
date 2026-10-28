@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 
@@ -29,6 +30,19 @@ namespace Nowcast
             Run("frozen timeline", FrozenTimeline);
             Run("no length, a position", NoLength);
             Run("cover without Spotify's logo", CoverCrop);
+            Run("cover after the network is back", CoverAfterFailures);
+            Run("cover link renewed before the host deletes it", CoverRenewed);
+            Run("player's picture after iTunes", LatePicture);
+            Run("iTunes error is not an answer", ITunesError);
+            Run("one track's cover is not another's", CoverPerTrack);
+            Run("one upload for an album", AlbumOnce);
+            Run("cover settings changed", CoverSettingsChanged);
+            Run("cover in place of the settings' picture", CoverOverImage);
+            Run("hosts that failed are left out", HostsLeftOut);
+            Run("own status", OwnStatus);
+            Run("own status settings", OwnSettings);
+            Run("own picture uploaded and renewed", OwnPicture);
+            Run("own picture from a file", OwnPictureFile);
             Console.WriteLine(failed == 0 ? "All passed" : failed + " failed");
             return failed == 0 ? 0 : 1;
         }
@@ -207,6 +221,348 @@ namespace Nowcast
                 Check(cover.Width <= 300, "scaled down");
             }
             Check(result[0] == 0xFF && result[1] == 0xD8, "a JPEG");
+        }
+
+        // Stand-ins for the covers: a clock that moves when told, a player's
+        // picture, uploads that fail while the network is down, and iTunes.
+        static DateTime clock;
+        static byte[] picture;
+        static bool networkDown;
+        static int uploads;
+        static int lookups;
+        static Covers.Result iTunesAnswer;
+
+        static void CoversWith(Action test)
+        {
+            var now = Covers.Now;
+            var read = Covers.ReadPicture;
+            var upload = Covers.Upload;
+            var lookUp = Covers.LookUp;
+            clock = new DateTime(2026, 10, 28, 12, 0, 0);
+            picture = new byte[] { 1, 2, 3 };
+            networkDown = false;
+            uploads = 0;
+            lookups = 0;
+            iTunesAnswer = new Covers.Result { Answered = true };
+            Covers.Reset();
+            Covers.Now = delegate { return clock; };
+            Covers.ReadPicture = delegate { return picture; };
+            Covers.Upload = delegate(byte[] image)
+            {
+                uploads++;
+                if (networkDown) throw new InvalidOperationException("no network");
+                return new Hosts.Uploaded { Url = "https://host/" + image[0] + "-" + uploads, Keep = TimeSpan.FromHours(3) };
+            };
+            Covers.LookUp = delegate
+            {
+                lookups++;
+                return iTunesAnswer;
+            };
+            var uploadOwn = Covers.UploadOwn;
+            Covers.UploadOwn = Covers.Upload;
+            try
+            {
+                test();
+            }
+            finally
+            {
+                Covers.Now = now;
+                Covers.ReadPicture = read;
+                Covers.Upload = upload;
+                Covers.LookUp = lookUp;
+                Covers.UploadOwn = uploadOwn;
+                Covers.Reset();
+            }
+        }
+
+        static Covers.Result Found(string url)
+        {
+            var entry = new Covers.Entry { Url = url, FromITunes = true, Renew = DateTime.MaxValue, Gone = DateTime.MaxValue };
+            return new Covers.Result { Entry = entry, Answered = true };
+        }
+
+        // Looks for the cover, lets the lookups it started finish, and looks again.
+        static string Cover(Track track, Settings settings, int seconds)
+        {
+            clock = clock.AddSeconds(seconds);
+            Covers.Find(track, settings);
+            var pending = (System.Collections.IDictionary)typeof(Covers).GetField("pending", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+            foreach (System.Threading.Tasks.Task job in new List<object>(pending.Values.Cast<object>()).Cast<System.Threading.Tasks.Task>()) job.Wait();
+            return Covers.Find(track, settings);
+        }
+
+        // A track whose upload failed for longer than a minute had no cover until the program restarted.
+        static void CoverAfterFailures()
+        {
+            CoversWith(delegate
+            {
+                var track = Track("SoundCloud.exe", "A", "B");
+                var settings = new Settings();
+                networkDown = true;
+                Check(Cover(track, settings, 0) == null, "no cover while the network is down");
+                var tried = uploads;
+                Check(Cover(track, settings, 1) == null && uploads == tried, "not tried again at once");
+                for (var i = 0; i < 20; i++) Cover(track, settings, 61);
+                Check(uploads > 15 && uploads < 30, "tried about once a minute: " + uploads);
+                networkDown = false;
+                Check(Cover(track, settings, 61) != null, "the cover comes when the network is back");
+            });
+        }
+
+        // uguu.se deletes a picture after three hours; the link kept being sent.
+        static void CoverRenewed()
+        {
+            CoversWith(delegate
+            {
+                var track = Track("SoundCloud.exe", "A", "B");
+                var settings = new Settings();
+                var first = Cover(track, settings, 0);
+                Check(first != null, "a cover");
+                Check(Cover(track, settings, 3600) == first, "the same link an hour later");
+                var renewed = Cover(track, settings, 5400);
+                Check(renewed != null && renewed != first, "a new link before the host deletes the old one");
+                picture = null;
+                Check(Cover(track, settings, 3 * 3600) == null, "a deleted link is not sent");
+            });
+        }
+
+        // A browser hands its picture over late: iTunes stands in, then the player's picture takes its place.
+        static void LatePicture()
+        {
+            CoversWith(delegate
+            {
+                var track = Track("Chrome", "A", "B");
+                var settings = new Settings();
+                picture = null;
+                iTunesAnswer = Found("https://itunes/1");
+                string cover = null;
+                for (var i = 0; i < 6 && cover == null; i++) cover = Cover(track, settings, 1);
+                Check(cover == "https://itunes/1", "iTunes stands in: " + cover);
+                picture = new byte[] { 7 };
+                Check(Cover(track, settings, 5).StartsWith("https://host/7"), "the player's picture in its place");
+
+                Covers.Reset();
+                var fromITunes = new Settings { CoverSource = "itunes" };
+                picture = new byte[] { 7 };
+                Check(Cover(track, fromITunes, 0) == "https://itunes/1", "from iTunes first");
+                Check(Cover(track, fromITunes, 60) == "https://itunes/1", "and it stays");
+            });
+        }
+
+        // iTunes not reached was taken for "not found" and never asked again.
+        static void ITunesError()
+        {
+            CoversWith(delegate
+            {
+                var track = Track("Chrome", "A", "B");
+                var settings = new Settings();
+                picture = null;
+                iTunesAnswer = new Covers.Result { Failed = true };
+                for (var i = 0; i < 6; i++) Cover(track, settings, 1);
+                Check(lookups == 1, "asked once: " + lookups);
+                iTunesAnswer = Found("https://itunes/2");
+                Check(Cover(track, settings, 10) == "https://itunes/2", "asked again after the error");
+                Check(lookups == 2, "twice in all");
+
+                Covers.Reset();
+                lookups = 0;
+                iTunesAnswer = new Covers.Result { Answered = true };
+                for (var i = 0; i < 20; i++) Cover(track, settings, 5);
+                Check(lookups == 1, "not found is asked once: " + lookups);
+            });
+        }
+
+        static void CoverPerTrack()
+        {
+            CoversWith(delegate
+            {
+                var first = Track("SoundCloud.exe", "A", "One");
+                var second = Track("SoundCloud.exe", "A", "Two");
+                var settings = new Settings();
+                Covers.ReadPicture = delegate(Track track) { return new byte[] { (byte)(track.Title == "One" ? 1 : 2) }; };
+                Covers.Find(first, settings);
+                var cover = Cover(second, settings, 1);
+                Check(cover != null && cover.StartsWith("https://host/2"), "the second track's own: " + cover);
+                Check(Cover(first, settings, 1).StartsWith("https://host/1"), "and the first's its own");
+            });
+        }
+
+        static void AlbumOnce()
+        {
+            CoversWith(delegate
+            {
+                var first = Track("SoundCloud.exe", "A", "One");
+                var second = Track("SoundCloud.exe", "A", "Two");
+                first.Album = second.Album = "Album";
+                var settings = new Settings();
+                var cover = Cover(first, settings, 0);
+                Check(Cover(second, settings, 1) == cover, "the same link");
+                Check(uploads == 1, "uploaded once: " + uploads);
+            });
+        }
+
+        static void CoverSettingsChanged()
+        {
+            CoversWith(delegate
+            {
+                var track = Track("SoundCloud.exe", "A", "B");
+                iTunesAnswer = Found("https://itunes/3");
+                Check(Cover(track, new Settings(), 0).StartsWith("https://host/"), "from the player");
+                Check(Cover(track, new Settings(), 1).StartsWith("https://host/") && uploads == 1, "settings read again: nothing uploaded again");
+                Check(Cover(track, new Settings { CoverSource = "itunes" }, 1) == "https://itunes/3", "from iTunes once chosen");
+            });
+        }
+
+        // A picture of one's own in the settings kept the real cover out of the status.
+        static void CoverOverImage()
+        {
+            CoversWith(delegate
+            {
+                var track = Track("SoundCloud.exe", "A", "B");
+                var settings = new Settings { Image = "https://example.com/own.png" };
+                networkDown = true;
+                Check(Activity.Image(track, settings) == "https://example.com/own.png", "the own picture first");
+                Cover(track, settings, 0);
+                networkDown = false;
+                Cover(track, settings, 10);
+                Check(Activity.Image(track, settings).StartsWith("https://host/"), "then the cover");
+            });
+        }
+
+        static void HostsLeftOut()
+        {
+            var order = typeof(Hosts).GetMethod("Order", BindingFlags.NonPublic | BindingFlags.Static);
+            var downUntil = (DateTime[])typeof(Hosts).GetField("downUntil", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+            var now = DateTime.Now;
+            try
+            {
+                Check(((List<int>)order.Invoke(null, new object[] { now })).Count == downUntil.Length, "all tried");
+                Check(((List<int>)order.Invoke(null, new object[] { now }))[0] == 0, "ours first");
+                downUntil[0] = now.AddMinutes(5);
+                var some = (List<int>)order.Invoke(null, new object[] { now });
+                Check(!some.Contains(0) && some.Count == downUntil.Length - 1, "a failed host left out");
+                for (var i = 0; i < downUntil.Length; i++) downUntil[i] = now.AddMinutes(10 + i);
+                downUntil[2] = now.AddMinutes(1);
+                var one = (List<int>)order.Invoke(null, new object[] { now });
+                Check(one.Count == 1 && one[0] == 2, "all failed: only the one due back first");
+            }
+            finally
+            {
+                for (var i = 0; i < downUntil.Length; i++) downUntil[i] = DateTime.MinValue;
+            }
+        }
+
+        // "Listening to nowcast": two lines, the time from the start, the picture, the server on a click.
+        static void OwnStatus()
+        {
+            var activity = Activity.Own("listening", "Делаю бит", "в FL Studio", 1000, "https://host/own");
+            Check((int)activity["type"] == 2 && (int)activity["status_display_type"] == 0, "Listening, the application's name");
+            Check((int)Activity.Own("watching", "Ok", "", 1000, null)["type"] == 3, "Watching");
+            Check((int)Activity.Own("playing", "Ok", "", 1000, null)["type"] == 0, "Playing");
+            Check((string)activity["details"] == "Делаю бит" && (string)activity["state"] == "в FL Studio", "the two lines");
+            Check(!Activity.Own("listening", "Ok", " ", 1000, null).ContainsKey("state"), "no second line, none sent");
+            Check((long)((Dictionary<string, object>)activity["timestamps"])["start"] == 1000, "the start");
+            var assets = Assets(activity);
+            Check((string)assets["large_image"] == "https://host/own", "the picture");
+            Check((string)assets["large_url"] == Program.DiscordInvite && (string)activity["details_url"] == Program.DiscordInvite, "a click opens the server");
+            Check(!activity.ContainsKey("buttons"), "no button");
+            Check(!Activity.Own("listening", "Ok", "", 1000, null).ContainsKey("assets"), "no picture, no assets");
+        }
+
+        static void OwnSettings()
+        {
+            var apply = typeof(Settings).GetMethod("Apply", BindingFlags.NonPublic | BindingFlags.Instance);
+            var settings = new Settings();
+            Check(!settings.Own && !settings.ShowsOwn && settings.OwnType == "listening", "off at first, listening");
+            apply.Invoke(settings, new object[] { new Dictionary<string, object> { { "ownType", "dancing" } } });
+            Check(settings.OwnType == "listening", "an unknown type is the default");
+            apply.Invoke(settings, new object[] { new Dictionary<string, object> { { "ownType", "playing" }, { "ownLine2", "x" } } });
+            Check(settings.OwnType == "playing" && settings.OwnLine2 == "x", "type and line 2 read");
+            apply.Invoke(settings, new object[] { new Dictionary<string, object> { { "own", true }, { "ownTitle", " " }, { "ownMinutes", 999999 } } });
+            Check(settings.Own && !settings.ShowsOwn, "no title, nothing shown");
+            Check(settings.OwnMinutes == 100 * 60, "at most 100 hours: " + settings.OwnMinutes);
+            settings.OwnTitle = "Бит";
+            Check(settings.ShowsOwn, "shown with a title");
+            Check(settings.OwnClientIdFor() == Settings.OwnClientId, "nowcast's application");
+            settings.ClientId = "123";
+            Check(settings.OwnClientIdFor() == "123", "one's own application wins");
+            foreach (var bad in new[] { "заходи на casino-x.com", "t.me/bonus", "bonus . com", "www.site", "https://x", "Лучшее КАЗИНО", "1xbet бонус", "Промокод 777", "porn", "18+ видео", "сайт.рф" })
+            {
+                settings.OwnTitle = bad;
+                Check(!settings.ShowsOwn, "not shown: " + bad);
+            }
+            foreach (var good in new[] { "Делаю бит", "Слушаю Dean Martin", "v1.2 вышла", "т.е. всё", "Ст. Петербург", "Mr. Smith", "ft.Drake", "feat. Rihanna" })
+            {
+                settings.OwnTitle = good;
+                Check(settings.ShowsOwn, "shown: " + good);
+            }
+            settings.OwnTitle = "Ок";
+            settings.OwnLine2 = "ставки тут";
+            Check(!settings.ShowsOwn, "the second line too");
+        }
+
+        static void OwnPicture()
+        {
+            CoversWith(delegate
+            {
+                var path = Path.Combine(Path.GetTempPath(), "nowcast-own-test-" + Guid.NewGuid().ToString("N"));
+                try
+                {
+                    Check(Covers.FindFile(path) == null, "no file, no picture");
+                    File.WriteAllBytes(path, new byte[] { 5 });
+                    networkDown = true;
+                    Covers.FindFile(path);
+                    Settle();
+                    Check(Covers.FindFile(path) == null, "not uploaded while the network is down");
+                    networkDown = false;
+                    clock = clock.AddSeconds(3);
+                    Covers.FindFile(path);
+                    Settle();
+                    var first = Covers.FindFile(path);
+                    Check(first != null && first.StartsWith("https://host/5"), "uploaded: " + first);
+                    clock = clock.AddHours(2.5);
+                    Check(Covers.FindFile(path) == first, "the old link while it is renewed");
+                    Settle();
+                    var renewed = Covers.FindFile(path);
+                    Check(renewed != null && renewed != first, "renewed");
+                    File.WriteAllBytes(path, new byte[] { 6, 6 });
+                    Covers.FindFile(path);
+                    Settle();
+                    Check(Covers.FindFile(path).StartsWith("https://host/6"), "another picture picked");
+                    File.Delete(path);
+                    Check(Covers.FindFile(path) == null, "removed");
+                }
+                finally
+                {
+                    File.Delete(path);
+                }
+            });
+        }
+
+        // Any picture becomes one a host takes: JPEG, or PNG with transparency, at most 300 px.
+        static void OwnPictureFile()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "nowcast-own-test-" + Guid.NewGuid().ToString("N") + ".bmp");
+            try
+            {
+                using (var picture = new Bitmap(800, 400, PixelFormat.Format24bppRgb)) picture.Save(path, ImageFormat.Bmp);
+                var bytes = CoverImage.FromFile(path);
+                Check(bytes[0] == 0xFF && bytes[1] == 0xD8, "a JPEG from a BMP");
+                using (var made = new Bitmap(new MemoryStream(bytes))) Check(made.Width == 300 && made.Height == 150, "scaled down: " + made.Width + "x" + made.Height);
+                using (var picture = new Bitmap(100, 100, PixelFormat.Format32bppArgb)) picture.Save(path, ImageFormat.Png);
+                bytes = CoverImage.FromFile(path);
+                Check(bytes[0] == 0x89 && bytes[1] == 0x50, "a PNG keeps its transparency");
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        static void Settle()
+        {
+            var job = (System.Threading.Tasks.Task)typeof(Covers).GetField("ownJob", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+            if (job != null) job.Wait();
         }
 
         static Track Track(string app, string artist, string title)

@@ -1,0 +1,25 @@
+# .deb and .rpm, made by linux/packaging/package.sh with nfpm.
+name: discord-nowcast
+arch: ${NFPM_ARCH}
+platform: linux
+version: ${VERSION}
+release: 1
+section: sound
+priority: optional
+maintainer: playsin333 <335104183+playsin333@users.noreply.github.com>
+description: |
+  Shows the track playing in any player (MPRIS) in the Discord status:
+  "Listening to Spotify", "Listening to SoundCloud" and so on.
+homepage: https://github.com/playsin333/discord-nowcast
+license: MIT
+contents:
+  - src: dist/nfpm/discord-nowcast
+    dst: /usr/bin/discord-nowcast
+    file_info:
+      mode: 0755
+  - src: linux/packaging/discord-nowcast.desktop
+    dst: /usr/share/applications/discord-nowcast.desktop
+  - src: assets/icon.png
+    dst: /usr/share/icons/hicolor/512x512/apps/discord-nowcast.png
+  - src: LICENSE
+    dst: /usr/share/licenses/discord-nowcast/LICENSE

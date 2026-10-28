@@ -1,0 +1,30 @@
+# Maintainer: playsin333 <335104183+playsin333@users.noreply.github.com>
+# Made by linux/packaging/package.sh for each release, checksums filled in.
+pkgname=discord-nowcast-bin
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='Shows the track playing in any player (MPRIS) in the Discord status'
+arch=('x86_64' 'aarch64')
+url='https://github.com/playsin333/discord-nowcast'
+license=('MIT')
+provides=('discord-nowcast')
+conflicts=('discord-nowcast')
+_raw="https://raw.githubusercontent.com/playsin333/discord-nowcast/v${pkgver}"
+_release="https://github.com/playsin333/discord-nowcast/releases/download/v${pkgver}"
+source=("discord-nowcast-${pkgver}.desktop::${_raw}/linux/packaging/discord-nowcast.desktop"
+        "discord-nowcast-${pkgver}.png::${_raw}/assets/icon.png"
+        "LICENSE-${pkgver}::${_raw}/LICENSE")
+source_x86_64=("discord-nowcast-${pkgver}-x86_64::${_release}/discord-nowcast-linux-amd64")
+source_aarch64=("discord-nowcast-${pkgver}-aarch64::${_release}/discord-nowcast-linux-arm64")
+sha256sums=('@SHA_DESKTOP@'
+            '@SHA_ICON@'
+            '@SHA_LICENSE@')
+sha256sums_x86_64=('@SHA_AMD64@')
+sha256sums_aarch64=('@SHA_ARM64@')
+
+package() {
+  install -Dm755 "discord-nowcast-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/discord-nowcast"
+  install -Dm644 "discord-nowcast-${pkgver}.desktop" "${pkgdir}/usr/share/applications/discord-nowcast.desktop"
+  install -Dm644 "discord-nowcast-${pkgver}.png" "${pkgdir}/usr/share/icons/hicolor/512x512/apps/discord-nowcast.png"
+  install -Dm644 "LICENSE-${pkgver}" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
