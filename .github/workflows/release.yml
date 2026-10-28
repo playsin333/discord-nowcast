@@ -76,6 +76,8 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
+          # appimagetool checks the .desktop file with desktop-file-validate.
+          sudo apt-get update && sudo apt-get install -y desktop-file-utils
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.41.3
           linux/packaging/package.sh "$VERSION"
 
