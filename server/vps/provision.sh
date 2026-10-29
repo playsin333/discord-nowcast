@@ -56,6 +56,14 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header Host $host;
     }
+    # Gallery previews arrive together; the upload limiter must not reject reads.
+    location ~ "^/[0-9a-f]{40}\.(jpg|png)$" {
+        limit_conn nowcast_conn 80;
+        proxy_pass http://127.0.0.1:18761;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Host $host;
+        proxy_read_timeout 20s;
+    }
     location / {
         limit_req zone=nowcast_upload burst=20 nodelay;
         proxy_pass http://127.0.0.1:18761;
