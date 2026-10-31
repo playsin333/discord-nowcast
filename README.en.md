@@ -181,3 +181,8 @@ On GitHub the program is built and checked by itself after every change.
 Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 License: [MIT](LICENSE).
+
+
+## Custom status moderation on Windows
+
+Starting with 1.5.4, while a custom status is enabled, its title, second line and selected picture reference are sent over HTTPS to the Nowcast server and are available to the administrator for moderation. Submissions happen on changes and hourly; records are kept for 6 hours after the last submission. Statuses without pictures are also submitted. Disabled custom statuses are not submitted. Regular track text is not sent by this mechanism. The server uses an HMAC of the IP address for limits and bans. Deleting a moderation record does not remove the user's existing Discord activity.

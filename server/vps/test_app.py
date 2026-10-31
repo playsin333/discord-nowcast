@@ -106,5 +106,72 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT COUNT(*) FROM pictures').fetchone()[0],2)
 
 
+
+
+
+class StatusTests(unittest.TestCase):
+    setUp = StorageTests.setUp
+    tearDown = StorageTests.tearDown
+    def submit(self, ip='1.1.1.1', **fields):
+        import json
+        data = dict(title='Привет <script>alert(1)</script>', line2='Вторая строка', type='listening', picture='')
+        data.update(fields)
+        return app.store_status(json.dumps(data,ensure_ascii=False).encode(),ip)
+
+    def test_same_picture_separate_users_and_texts(self):
+        picture=app.store(self.body,'1.1.1.1','own')[1].rsplit('/',1)[1]
+        app.store(self.body,'2.2.2.2','own')
+        self.assertEqual(self.submit(picture=picture)[0],200)
+        self.assertEqual(self.submit(ip='2.2.2.2',title='Другой текст',picture=picture)[0],200)
+        self.assertEqual(self.submit(picture=picture)[0],200)
+        self.assertEqual(self.submit(ip='3.3.3.3',picture=picture)[0],400)
+        with app.connect() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM statuses').fetchone()[0],2)
+        handler=object.__new__(app.Handler)
+        handler.cookie=lambda name:'test-session'
+        handler.send=lambda status,body,mime:body
+        page=handler.admin({})
+        self.assertIn('Другой текст',page)
+        self.assertIn('&lt;script&gt;',page)
+        self.assertNotIn('<script>alert(1)</script>',page)
+
+    def test_status_without_picture_expiry_validation(self):
+        self.assertEqual(self.submit()[0],200)
+        self.assertEqual(self.submit(title='')[0],400)
+        self.assertEqual(self.submit(title='x'*129)[0],400)
+        self.assertEqual(self.submit(picture='https://evil.invalid/image.png')[0],400)
+        self.assertEqual(self.submit(type='bad')[0],400)
+        self.assertEqual(app.store_status(b'[]','1.1.1.1')[0],400)
+        with patch('app.time.time',return_value=time.time()+app.KEEP+1):
+            app.cleanup()
+        with app.connect() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM statuses').fetchone()[0],0)
+
+    def test_status_delete_and_ban_http_forms(self):
+        import hmac,hashlib
+        from urllib.parse import urlencode
+        self.assertEqual(self.submit()[0],200)
+        with app.connect() as db:
+            status_id=db.execute('SELECT id FROM statuses').fetchone()[0]
+        handler=object.__new__(app.Handler)
+        handler.path='/admin'
+        handler.cookie=lambda name:'test-session'
+        handler.authenticated=lambda:True
+        handler.send=lambda status,body,**kwargs:status
+        csrf=hmac.new(app.ADMIN_KEY.encode(),b'test-session',hashlib.sha256).hexdigest()
+        form=dict(status_id=status_id,action='delete',csrf='wrong')
+        handler.read=lambda maximum:urlencode(form).encode()
+        self.assertEqual(handler.do_POST(),403)
+        form['csrf']=csrf
+        self.assertEqual(handler.do_POST(),303)
+        self.assertEqual(self.submit()[0],451)
+        self.assertEqual(self.submit(title='Новый статус')[0],200)
+        with app.connect() as db:
+            form['status_id']=db.execute('SELECT id FROM statuses').fetchone()[0]
+        form['action']='ban'
+        self.assertEqual(handler.do_POST(),303)
+        self.assertEqual(self.submit(title='Ещё статус')[0],403)
+        self.assertEqual(app.store(self.body,'1.1.1.1','own')[0],403)
+
 if __name__ == '__main__':
     unittest.main()

@@ -56,6 +56,7 @@ namespace Nowcast
             layout.Controls.Add(Caption(Strings.OwnLine2Label));
             layout.Controls.Add(line2);
             layout.Controls.Add(unclean);
+            layout.Controls.Add(SettingsForm.Note(Strings.OwnModeration));
 
             layout.Controls.Add(Caption(Strings.OwnPictureLabel));
             layout.Controls.Add(picture);
@@ -207,3 +208,4 @@ namespace Nowcast
         }
     }
 }
+

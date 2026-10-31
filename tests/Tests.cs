@@ -49,6 +49,7 @@ namespace Nowcast
             Run("lyrics looked up again after an error", LyricsRetry);
             Run("hosts that failed are left out", HostsLeftOut);
             Run("VPS picture lifetimes and moderation rejection", HostFallback);
+            Run("custom status reports, renews and retries", StatusReports);
             Run("own status", OwnStatus);
             Run("own status settings", OwnSettings);
             Run("own picture uploaded and renewed", OwnPicture);
@@ -637,6 +638,43 @@ namespace Nowcast
         }
 
         // "Listening to nowcast": two lines, the time from the start, the picture, the server on a click.
+        static void StatusReports()
+        {
+            var originalSend = StatusReporter.Send;
+            var originalNow = StatusReporter.Now;
+            var now = DateTime.UtcNow;
+            var bodies = new List<string>();
+            Action wait = delegate {
+                var busy = typeof(StatusReporter).GetField("busy", BindingFlags.NonPublic | BindingFlags.Static);
+                for (var i = 0; i < 1000 && (bool)busy.GetValue(null); i++) Thread.Sleep(5);
+                Check(!(bool)busy.GetValue(null), "report completed");
+            };
+            try
+            {
+                StatusReporter.Now = delegate { return now; };
+                StatusReporter.Send = delegate(string body) { bodies.Add(body); };
+                StatusReporter.Report("Привет", "Вторая строка", "listening", null); wait();
+                Check(bodies.Count == 1 && bodies[0].Contains("Привет"), "text without picture sent");
+                StatusReporter.Report("Привет", "Вторая строка", "listening", null); wait();
+                Check(bodies.Count == 1, "unchanged text is not sent every tick");
+                now = now.AddHours(1);
+                StatusReporter.Report("Привет", "Вторая строка", "listening", null); wait();
+                Check(bodies.Count == 2, "active status renewed");
+                var pic = new string('a', 40) + ".png";
+                StatusReporter.Report("Привет", "Вторая строка", "listening", Hosts.Own + "/" + pic); wait();
+                Check(bodies.Count == 3 && bodies[2].Contains(pic), "late picture attaches to text");
+                StatusReporter.Send = delegate(string body) { throw new InvalidOperationException("offline"); };
+                StatusReporter.Report("Changed", "", "playing", null); wait();
+                StatusReporter.Send = delegate(string body) { bodies.Add(body); };
+                StatusReporter.Report("Changed", "", "playing", null); wait();
+                Check(bodies.Count == 3, "failure backs off");
+                now = now.AddMinutes(1);
+                StatusReporter.Report("Changed", "", "playing", null); wait();
+                Check(bodies.Count == 4, "failed report retried");
+            }
+            finally { StatusReporter.Send = originalSend; StatusReporter.Now = originalNow; }
+        }
+
         static void OwnStatus()
         {
             var activity = Activity.Own("listening", "Делаю бит", "в FL Studio", 1000, "https://host/own");
@@ -804,3 +842,4 @@ namespace Nowcast
         }
     }
 }
+
