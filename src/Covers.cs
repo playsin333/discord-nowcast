@@ -77,7 +77,7 @@ namespace Nowcast
         public static Func<Track, byte[]> ReadPicture = Media.ReadThumbnail;
         public static Func<byte[], Hosts.Uploaded> Upload = delegate(byte[] image) { return Hosts.Upload(CoverImage.Prepare(image)); };
         public static Func<Track, Result> LookUp = FromITunes;
-        public static Func<byte[], Hosts.Uploaded> UploadOwn = delegate(byte[] image) { return Hosts.UploadOwn(CoverImage.Prepare(image)); };
+        public static Func<byte[], string, Hosts.Uploaded> UploadOwn = delegate(byte[] image, string slot) { return Hosts.UploadOwn(CoverImage.Prepare(image), slot); };
 
         // Raised when a lookup is done, so that the status goes out at once and
         // does not wait for the engine's next round.
@@ -370,7 +370,7 @@ namespace Nowcast
             {
                 try
                 {
-                    var entry = Uploaded(UploadOwn(File.ReadAllBytes(path)));
+                    var entry = Uploaded(UploadOwn(File.ReadAllBytes(path), path == Settings.OwnPicturePath ? "status" : "fallback"));
                     Log.Write("Picture " + name + ": " + entry.Url);
                     return new Result { Entry = entry, Print = print };
                 }

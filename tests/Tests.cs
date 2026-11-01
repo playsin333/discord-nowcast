@@ -50,6 +50,7 @@ namespace Nowcast
             Run("hosts that failed are left out", HostsLeftOut);
             Run("VPS picture lifetimes and moderation rejection", HostFallback);
             Run("custom status reports, renews and retries", StatusReports);
+            Run("tracked picture carries installation and slot", TrackedPicture);
             Run("own status", OwnStatus);
             Run("own status settings", OwnSettings);
             Run("own picture uploaded and renewed", OwnPicture);
@@ -271,7 +272,7 @@ namespace Nowcast
                 return iTunesAnswer;
             };
             var uploadOwn = Covers.UploadOwn;
-            Covers.UploadOwn = Covers.Upload;
+            Covers.UploadOwn = delegate(byte[] image, string slot) { return Covers.Upload(image); };
             try
             {
                 test();
@@ -579,14 +580,39 @@ namespace Nowcast
             public int PrimaryStatus = 503;
             public string FailureBody;
             public readonly List<string> Requests = new List<string>();
+            public string Installation, Slot;
             protected override System.Threading.Tasks.Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken cancellation)
             {
                 var origin = request.RequestUri.GetLeftPart(UriPartial.Authority);
                 Requests.Add(origin);
+                if (request.Headers.Contains("X-Nowcast-Installation")) Installation = request.Headers.GetValues("X-Nowcast-Installation").First();
+                if (request.Headers.Contains("X-Nowcast-Slot")) Slot = request.Headers.GetValues("X-Nowcast-Slot").First();
                 var status = origin == Hosts.Own ? PrimaryStatus : 200;
                 var response = new System.Net.Http.HttpResponseMessage((System.Net.HttpStatusCode)status);
                 response.Content = new System.Net.Http.StringContent(status == 200 ? origin + "/" + new string('a', 40) + ".png" : FailureBody ?? (status == 403 ? "Banned" : "unavailable"));
                 return System.Threading.Tasks.Task.FromResult(response);
+            }
+        }
+
+        static void TrackedPicture()
+        {
+            var saved = Hosts.UploadHttp;
+            var path = StatusReporter.IdentityPath;
+            var folder = Path.Combine(Path.GetTempPath(), "nowcast-tracked-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                StatusReporter.IdentityPath = Path.Combine(folder, "installation");
+                var fake = new FakeHostHandler { PrimaryStatus = 200 };
+                Hosts.UploadHttp = new System.Net.Http.HttpClient(fake);
+                Hosts.UploadOwn(new byte[] { 0x89, 0x50 }, "status");
+                Check(fake.Requests.Count == 1 && fake.Requests[0] == Hosts.Reserve, "tracked metadata reaches VPS directly");
+                Check(fake.Slot == "status" && fake.Installation == StatusReporter.Installation(), "same persistent token on picture and status");
+            }
+            finally
+            {
+                Hosts.UploadHttp.Dispose(); Hosts.UploadHttp = saved;
+                StatusReporter.IdentityPath = path;
+                if (Directory.Exists(folder)) Directory.Delete(folder, true);
             }
         }
 
@@ -640,6 +666,9 @@ namespace Nowcast
         // "Listening to nowcast": two lines, the time from the start, the picture, the server on a click.
         static void StatusReports()
         {
+            var identityPath = StatusReporter.IdentityPath;
+            var identityFolder = Path.Combine(Path.GetTempPath(), "nowcast-identity-" + Guid.NewGuid().ToString("N"));
+            StatusReporter.IdentityPath = Path.Combine(identityFolder, "installation");
             var originalSend = StatusReporter.Send;
             var originalNow = StatusReporter.Now;
             var now = DateTime.UtcNow;
@@ -655,6 +684,8 @@ namespace Nowcast
                 StatusReporter.Send = delegate(string body) { bodies.Add(body); };
                 StatusReporter.Report("Привет", "Вторая строка", "listening", null); wait();
                 Check(bodies.Count == 1 && bodies[0].Contains("Привет"), "text without picture sent");
+                var payload = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string,string>>(bodies[0]);
+                Check(payload["client"].Length == 64 && payload["client"] == StatusReporter.Installation(), "installation persists across reports and reads");
                 StatusReporter.Report("Привет", "Вторая строка", "listening", null); wait();
                 Check(bodies.Count == 1, "unchanged text is not sent every tick");
                 now = now.AddHours(1);
@@ -672,7 +703,12 @@ namespace Nowcast
                 StatusReporter.Report("Changed", "", "playing", null); wait();
                 Check(bodies.Count == 4, "failed report retried");
             }
-            finally { StatusReporter.Send = originalSend; StatusReporter.Now = originalNow; }
+            finally
+            {
+                StatusReporter.Send = originalSend; StatusReporter.Now = originalNow;
+                StatusReporter.IdentityPath = identityPath;
+                if (Directory.Exists(identityFolder)) Directory.Delete(identityFolder, true);
+            }
         }
 
         static void OwnStatus()
@@ -842,4 +878,3 @@ namespace Nowcast
         }
     }
 }
-

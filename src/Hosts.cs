@@ -38,14 +38,18 @@ namespace Nowcast
         public static Uploaded Upload(byte[] image) { return Managed(image, ""); }
         public static Uploaded UploadOwn(byte[] image) { return Managed(image, "?kind=own"); }
 
-        static Uploaded Managed(byte[] image, string query)
+        public static Uploaded UploadOwn(byte[] image, string slot) { return Managed(image, "?kind=own", slot); }
+
+        static Uploaded Managed(byte[] image, string query, string slot = null)
         {
             Exception last = null;
-            foreach (var host in Order(Now()))
+            // Tracked files go directly to the same VPS storage: older Workers
+            // do not forward installation/slot metadata.
+            foreach (var host in slot == null ? Order(Now()) : new List<int> { 1 })
             {
                 try
                 {
-                    var url = To(hosts[host], image, query);
+                    var url = To(hosts[host], image, query, slot);
                     lock (book) { failures[host] = 0; downUntil[host] = DateTime.MinValue; }
                     return new Uploaded { Url = url, Keep = TimeSpan.FromHours(query == "" ? 1 : 6) };
                 }
@@ -76,7 +80,7 @@ namespace Nowcast
             return result;
         }
 
-        static string To(string origin, byte[] image, string query)
+        static string To(string origin, byte[] image, string query, string slot)
         {
             using (var content = new ByteArrayContent(image))
             using (var request = new HttpRequestMessage(HttpMethod.Post, origin + "/upload" + query))
@@ -84,6 +88,11 @@ namespace Nowcast
                 content.Headers.TryAddWithoutValidation("Content-Type", IsPng(image) ? "image/png" : "image/jpeg");
                 request.Content = content;
                 request.Headers.TryAddWithoutValidation("User-Agent", "discord-nowcast/" + Program.Version);
+                if (slot != null)
+                {
+                    request.Headers.TryAddWithoutValidation("X-Nowcast-Installation", StatusReporter.Installation());
+                    request.Headers.TryAddWithoutValidation("X-Nowcast-Slot", slot);
+                }
                 request.Headers.ExpectContinue = false;
                 using (var response = UploadHttp.SendAsync(request).GetAwaiter().GetResult())
                 {

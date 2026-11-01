@@ -173,5 +173,109 @@ class StatusTests(unittest.TestCase):
         self.assertEqual(self.submit(title='Ещё статус')[0],403)
         self.assertEqual(app.store(self.body,'1.1.1.1','own')[0],403)
 
+class ReplacementTests(unittest.TestCase):
+    setUp = StorageTests.setUp
+    tearDown = StorageTests.tearDown
+    def upload(self, token, color='red', ip='1.1.1.1', slot='status'):
+        buf=io.BytesIO()
+        Image.new('RGB',(8,8),color).save(buf,format='PNG')
+        status,url=app.store(buf.getvalue(),ip,'own','vps',token,slot)
+        self.assertEqual(status,200)
+        return url.rsplit('/',1)[1]
+
+    def report(self, token, picture='', title='Track', ip='1.1.1.1'):
+        import json
+        return app.store_status(json.dumps(dict(client=token,title=title,line2='Line',type='listening',picture=picture)).encode(),ip)[0]
+
+    def test_http_upload_forwards_installation_and_slot(self):
+        handler=object.__new__(app.Handler)
+        handler.path='/upload?kind=own'
+        handler.headers={'X-Real-IP':'1.1.1.1','X-Nowcast-Installation':'a'*64,'X-Nowcast-Slot':'status'}
+        handler.client_address=('127.0.0.1',1234)
+        handler.read=lambda maximum:self.body
+        handler.send=lambda status,body:(status,body)
+        status,url=handler.do_POST()
+        self.assertEqual(status,200)
+        self.assertEqual(self.report('a'*64,url.rsplit('/',1)[1]),200)
+        self.assertEqual(self.report('b'*64,url.rsplit('/',1)[1]),400)
+
+    def test_text_replaces_and_ip_is_not_identity(self):
+        token='a'*64
+        self.assertEqual(self.report(token,title='First'),200)
+        self.assertEqual(self.report(token,title='First!'),200)
+        self.assertEqual(self.report(token,title='Latest',ip='2.2.2.2'),200)
+        self.assertEqual(self.report('b'*64,title='Other',ip='2.2.2.2'),200)
+        with app.connect() as db:
+            rows=db.execute('SELECT title FROM statuses ORDER BY title').fetchall()
+            self.assertEqual([r['title'] for r in rows],['Latest','Other'])
+
+    def test_unique_picture_replaced_and_not_duplicated_in_gallery(self):
+        token='a'*64
+        first=self.upload(token)
+        self.assertEqual(self.report(token,first),200)
+        second=self.upload(token,'blue')
+        # Keep the old image until the new status has actually arrived.
+        with app.connect() as db:
+            self.assertIsNotNone(db.execute('SELECT 1 FROM pictures WHERE id=?',(first.split('.')[0],)).fetchone())
+        self.assertEqual(self.report(token,second,title='New'),200)
+        with app.connect() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM statuses').fetchone()[0],1)
+            self.assertIsNone(db.execute('SELECT 1 FROM pictures WHERE id=?',(first.split('.')[0],)).fetchone())
+            self.assertIsNotNone(db.execute('SELECT 1 FROM pictures WHERE id=?',(second.split('.')[0],)).fetchone())
+        handler=object.__new__(app.Handler)
+        handler.cookie=lambda name:'session'
+        handler.send=lambda status,body,mime:body
+        page=handler.admin({})
+        self.assertEqual(page.count('src="/'+second+'"'),1)
+        self.assertNotIn(first,page)
+        self.assertEqual(self.report(token,title='No picture'),200)
+        with app.connect() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM pictures').fetchone()[0],0)
+
+    def test_shared_picture_and_other_slot_preserved(self):
+        a,b='a'*64,'b'*64
+        shared=self.upload(a)
+        self.upload(b)
+        self.report(a,shared)
+        self.report(b,shared)
+        newer=self.upload(a,'blue')
+        self.report(a,newer,title='A changed')
+        with app.connect() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM pictures').fetchone()[0],2)
+        self.report(b,title='B no picture')
+        with app.connect() as db:
+            self.assertIsNone(db.execute('SELECT 1 FROM pictures WHERE id=?',(shared.split('.')[0],)).fetchone())
+        self.upload(a,'blue',slot='fallback')
+        self.report(a,title='A no picture')
+        with app.connect() as db:
+            self.assertIsNotNone(db.execute('SELECT 1 FROM pictures WHERE id=?',(newer.split('.')[0],)).fetchone())
+
+    def test_legacy_and_player_references_are_protected(self):
+        token='a'*64
+        picture=self.upload(token)
+        self.report(token,picture)
+        app.store(self.body,'9.9.9.9','cover')
+        self.report(token,title='Changed')
+        with app.connect() as db:
+            self.assertIsNotNone(db.execute('SELECT 1 FROM pictures WHERE id=?',(picture.split('.')[0],)).fetchone())
+        self.assertEqual(self.report('malformed'),400)
+        self.assertEqual(app.store(self.body,'1.1.1.1','own','vps',token,'bad')[0],400)
+
+    def test_migration_is_additive_and_protects_existing_files(self):
+        # Start from the 1.5.4 schema, with a picture and a legacy text.
+        with app.connect() as db:
+            db.execute('DROP INDEX statuses_client')
+            db.execute('DROP TABLE statuses')
+            db.execute('CREATE TABLE statuses (id TEXT PRIMARY KEY,ip TEXT,title TEXT,line2 TEXT,type TEXT,picture TEXT,added INTEGER)')
+            db.execute('INSERT INTO statuses VALUES (?,?,?,?,?,?,?)',('old','ip','Old','','listening','',int(time.time())))
+            db.execute('DROP TABLE protected_pictures')
+            db.execute('INSERT INTO pictures VALUES (?,?,?,?,?,?)',('a'*40,'png',self.body,int(time.time()),'own','vps'))
+        app.setup()
+        app.setup()
+        with app.connect() as db:
+            self.assertEqual(db.execute('SELECT title FROM statuses').fetchone()[0],'Old')
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM protected_pictures').fetchone()[0],1)
+
+
 if __name__ == '__main__':
     unittest.main()

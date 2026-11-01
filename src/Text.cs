@@ -45,8 +45,8 @@ namespace Nowcast
         // The own status window.
         public static readonly string OwnOn = T("Показывать свой статус вместо трека", "Show my own status instead of the track");
         public static readonly string OwnModeration = T(
-            "Текст и картинка включённого своего статуса отправляются на сервер Nowcast для модерации. Хранение — 6 часов после последней отправки.",
-            "While your custom status is enabled, its text and picture are sent to the Nowcast server for moderation. They are kept for 6 hours after the last submission.");
+            "Текст и картинка включённого своего статуса отправляются на сервер Nowcast для модерации. Правки заменяют предыдущую карточку этой установки. Хранение — 6 часов после последней отправки.",
+            "While your custom status is enabled, its text and picture are sent to the Nowcast server for moderation. Edits replace the previous card for this installation. Records are kept for 6 hours after the last submission.");
         public static readonly string OwnNote = T("Клик по картинке или строке 1 открывает сервер nowcast.", "A click on the picture or line 1 opens the nowcast server.");
         public static readonly string OwnUnclean = T("Не покажется: в строках нельзя ссылки, рекламу казино и 18+.", "Won't show: no links, casino ads or 18+ in the lines.");
         public static readonly string OwnTypeLabel = T("Тип:", "Type:");

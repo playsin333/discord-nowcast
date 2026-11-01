@@ -186,3 +186,5 @@ License: [MIT](LICENSE).
 ## Custom status moderation on Windows
 
 Starting with 1.5.4, while a custom status is enabled, its title, second line and selected picture reference are sent over HTTPS to the Nowcast server and are available to the administrator for moderation. Submissions happen on changes and hourly; records are kept for 6 hours after the last submission. Statuses without pictures are also submitted. Disabled custom statuses are not submitted. Regular track text is not sent by this mechanism. The server uses an HMAC of the IP address for limits and bans. Deleting a moderation record does not remove the user's existing Discord activity.
+
+Starting with 1.5.5, edits replace the previous custom-status card for the installation. A persistent random token is stored in `%APPDATA%/discord-nowcast/status-installation`, separately from config.json and diagnostics. Do not share this file: it permits updating the installation's card. Old pictures are deleted only when no other references remain. Existing records without a token retain their normal expiry.

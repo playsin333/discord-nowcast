@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text.RegularExpressions;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -12,6 +14,26 @@ namespace Nowcast
         internal static Func<DateTime> Now = delegate { return DateTime.UtcNow; };
         static readonly object gate = new object();
         static bool busy;
+        internal static string IdentityPath = Path.Combine(Log.Folder, "status-installation");
+        // Keep this outside config.json and diagnostics. It is a random installation
+        // token, not the Discord account or the connection's shared IP address.
+        internal static string Installation()
+        {
+            lock (gate)
+            {
+                if (File.Exists(IdentityPath))
+                {
+                    var saved = File.ReadAllText(IdentityPath).Trim();
+                    if (!Regex.IsMatch(saved, "^[a-f0-9]{64}$")) throw new IOException("Invalid installation token");
+                    return saved;
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(IdentityPath));
+                var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+                using (var stream = new FileStream(IdentityPath, FileMode.CreateNew, FileAccess.Write))
+                using (var writer = new StreamWriter(stream)) writer.Write(token);
+                return token;
+            }
+        }
         static string sent, failed;
         static DateTime renew, retry;
 
@@ -33,7 +55,9 @@ namespace Nowcast
             Task.Run(delegate {
                 try
                 {
-                    Send(body);
+                    var payload = new JavaScriptSerializer().Deserialize<Dictionary<string, string>>(body);
+                    payload["client"] = Installation();
+                    Send(new JavaScriptSerializer().Serialize(payload));
                     lock (gate) { sent = body; renew = Now().AddHours(1); failed = null; }
                 }
                 catch (Exception e)
