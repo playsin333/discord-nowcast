@@ -23,10 +23,10 @@ type Engine struct {
 	settingsSeen string
 
 	// What is in the status now: track key, or "none".
-	sentKey     string
-	sentStart   *int64
-	jumpedAt    time.Time
-	sentPlaying *bool
+	sentKey      string
+	sentStart    *int64
+	sentDuration int64
+	sentPlaying  *bool
 	// The picture in the status now: a cover's link, the settings' own picture, or "".
 	sentImage string
 	// The line of the song in the status now, or "".
@@ -55,11 +55,12 @@ type Engine struct {
 
 // The last timeline the player reported, and the start worked out from it.
 type timeline struct {
-	key      string
-	position float64
-	updated  int64
-	playing  bool
-	start    *int64
+	key            string
+	position       float64
+	updated        int64
+	playing        bool
+	start          *int64
+	pausedPosition float64
 }
 
 func newEngine() *Engine {
@@ -315,13 +316,8 @@ func (e *Engine) tick() string {
 		start = e.startFor(track, time.Now().UnixMilli())
 		playing = &track.IsPlaying
 	}
-	// A seek: the start of the track moved by more than 3 seconds.
-	jumped := start != nil && e.sentStart != nil && math.Abs(float64(*start-*e.sentStart)) > 3000
-	// At most one seek in 30 s: a player whose timeline reads oddly must not
-	// send the same track over and over.
-	if jumped && key == e.sentKey && time.Since(e.jumpedAt) < 30*time.Second {
-		jumped = false
-	}
+	// Repeated seeks coalesce into the next ordinary four-second send slot.
+	timingChanged := e.timingChanged(track, start)
 	isResend := e.resendAt != nil && !time.Now().Before(*e.resendAt)
 	// Another picture for the same track: a cover that was not there when
 	// the track started, one in place of the settings' own picture or of an
@@ -335,7 +331,7 @@ func (e *Engine) tick() string {
 		lyric = lyricAt(e.lyrics.Find(track), time.Now().UnixMilli()-*start)
 	}
 	lyricCame := key == e.sentKey && track != nil && lyric != e.sentLyric
-	changed := key != e.sentKey || playingChanged || jumped || isResend || coverCame || lyricCame
+	changed := key != e.sentKey || playingChanged || timingChanged || isResend || coverCame || lyricCame
 	// Discord takes at most 5 updates per 20 seconds.
 	if !changed || time.Since(e.sentAt) < 4*time.Second {
 		return mediaError
@@ -361,7 +357,7 @@ func (e *Engine) tick() string {
 			_, sendErr = e.discord.SetActivity(activity)
 		}
 		// A new line of the song every few seconds would bury the log.
-		onlyLyric := lyricCame && key == e.sentKey && !playingChanged && !jumped && !isResend && !coverCame
+		onlyLyric := lyricCame && key == e.sentKey && !playingChanged && !timingChanged && !isResend && !coverCame
 		if sendErr == nil && !onlyLyric {
 			note := ""
 			if _, ok := activity["assets"]; !ok {
@@ -386,10 +382,8 @@ func (e *Engine) tick() string {
 	e.sentKey = key
 	e.sentImage = image
 	e.sentLyric = lyric
-	if jumped {
-		e.jumpedAt = time.Now()
-	}
 	e.sentStart = start
+	e.sentDuration = durationMillis(track)
 	e.sentPlaying = playing
 	e.sentAt = time.Now()
 	return mediaError
@@ -451,6 +445,7 @@ func (e *Engine) sendOwn(settings *Settings) {
 	e.sentKey = key
 	e.sentImage = image
 	e.sentStart = nil
+	e.sentDuration = 0
 	e.sentPlaying = nil
 	e.sentAt = time.Now()
 }
@@ -502,26 +497,69 @@ func (e *Engine) pick(tracks []*Track) *Track {
 // something new: one that keeps one position while it plays would
 // otherwise creep on a second a second and go out again as a seek.
 func (e *Engine) startFor(track *Track, now int64) *int64 {
+	tl := &e.timeline
+	sameTrack := track.Key() == tl.key
+	samePlayback := sameTrack && track.IsPlaying == tl.playing
+	positionChanged := !sameTrack || track.Position != tl.position
 	if track.Duration <= 0 && track.Position <= 0 && track.UpdatedAt == 0 {
+		if samePlayback && tl.start != nil {
+			return tl.start
+		}
+		*tl = timeline{key: track.Key(), playing: track.IsPlaying, position: track.Position, updated: track.UpdatedAt}
 		return nil
 	}
-	tl := &e.timeline
-	same := track.Key() == tl.key && track.IsPlaying == tl.playing
-	if same && tl.start != nil && track.Position == tl.position && track.UpdatedAt == tl.updated {
+	if samePlayback && tl.start != nil && !positionChanged {
+		// A fresh timestamp alone is not evidence that playback moved or sought.
+		tl.updated = track.UpdatedAt
 		return tl.start
 	}
-	// A new position under the old time: the time is stale, the position is as of now.
 	updatedAt := track.UpdatedAt
-	if same && track.UpdatedAt == tl.updated {
+	if sameTrack && track.UpdatedAt == tl.updated {
 		updatedAt = 0
+	}
+	var start int64
+	if sameTrack && !samePlayback && tl.start != nil && !positionChanged {
+		position := tl.pausedPosition
+		if tl.playing {
+			position = math.Max(0, float64(now-*tl.start)) / 1000
+		}
+		if track.Duration > 0 {
+			position = math.Min(position, track.Duration)
+		}
+		start = now - int64(position*1000)
+	} else {
+		start = startedAt(track, updatedAt, now)
+	}
+	if samePlayback && track.IsPlaying && tl.start != nil && math.Abs(float64(start-*tl.start)) <= 1500 {
+		start = *tl.start
 	}
 	tl.key = track.Key()
 	tl.playing = track.IsPlaying
 	tl.position = track.Position
 	tl.updated = track.UpdatedAt
-	start := startedAt(track, updatedAt, now)
 	tl.start = &start
+	if !track.IsPlaying {
+		tl.pausedPosition = math.Max(0, float64(now-start)) / 1000
+	}
 	return tl.start
+}
+
+func durationMillis(track *Track) int64 {
+	if track == nil || track.Duration <= 0 {
+		return 0
+	}
+	return int64(track.Duration * 1000)
+}
+
+func (e *Engine) timingChanged(track *Track, start *int64) bool {
+	if (start == nil) != (e.sentStart == nil) {
+		return true
+	}
+	if start == nil {
+		return false
+	}
+	duration := durationMillis(track)
+	return math.Abs(float64(*start-*e.sentStart)) > 3000 || (duration == 0) != (e.sentDuration == 0) || math.Abs(float64(duration-e.sentDuration)) >= 1000
 }
 
 func startedAt(track *Track, updatedAt, now int64) int64 {

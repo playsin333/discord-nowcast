@@ -21,13 +21,15 @@ namespace Nowcast
         // What is in the status now: track key, or "none".
         string sentKey;
         long? sentStart;
-        DateTime jumpedAt = DateTime.MinValue;
+        long sentDuration;
         // The last timeline the app reported, and the start worked out from it.
         string timelineKey;
         double timelinePosition;
         long timelineUpdated;
         bool timelinePlaying;
         long? timelineStart;
+        double timelinePausedPosition;
+        internal static Func<long> TimelineNow = delegate { return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); };
         bool? sentPlaying;
         // The picture in the status now: a cover's link, the settings' own picture, or null.
         string sentImage;
@@ -240,11 +242,9 @@ namespace Nowcast
             var image = track == null ? null : Activity.Image(track, settings);
             var start = track == null ? null : StartFor(track);
             bool? playing = track == null ? (bool?)null : track.IsPlaying;
-            // A seek: the start of the track moved by more than 3 seconds.
-            var jumped = start.HasValue && sentStart.HasValue && Math.Abs(start.Value - sentStart.Value) > 3000;
-            // At most one seek in 30 s: a player whose timeline reads oddly must
-            // not send the same track over and over.
-            if (jumped && key == sentKey && (DateTime.Now - jumpedAt).TotalSeconds < 30) jumped = false;
+            // Keep the latest seek pending until the normal four-second send slot.
+            // Duration can arrive later than the title/position and needs a resend too.
+            var timingChanged = TimingChanged(track, start);
             var isResend = resendAt.HasValue && DateTime.Now >= resendAt.Value;
             // Another picture for the same track: a cover that was not there when
             // the track started, one in place of the settings' own picture or of
@@ -258,7 +258,7 @@ namespace Nowcast
                 lyric = Lyrics.Line(Lyrics.Find(track), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start.Value);
             }
             var lyricCame = key == sentKey && track != null && lyric != sentLyric;
-            var changed = key != sentKey || playing != sentPlaying || jumped || isResend || coverCame || lyricCame;
+            var changed = key != sentKey || playing != sentPlaying || timingChanged || isResend || coverCame || lyricCame;
             // Discord takes at most 5 updates per 20 seconds.
             if (!changed || (DateTime.Now - sentAt).TotalSeconds < 4) return;
             if (isResend) resendAt = null;
@@ -281,7 +281,7 @@ namespace Nowcast
                         discord.SetActivity(activity);
                     }
                     // A new line of the song every few seconds would bury the log.
-                    var onlyLyric = lyricCame && key == sentKey && playing == sentPlaying && !jumped && !isResend && !coverCame;
+                    var onlyLyric = lyricCame && key == sentKey && playing == sentPlaying && !timingChanged && !isResend && !coverCame;
                     if (!onlyLyric) Log.Write("Status: " + Describe(track) + (activity.ContainsKey("assets") ? "" : " (no cover)") +
                         (key != sentKey && seenKey == key ? " [" + (int)(DateTime.Now - seenAt).TotalMilliseconds + " ms after the track was seen]" : ""));
                 }
@@ -289,8 +289,8 @@ namespace Nowcast
                 sentKey = key;
                 sentImage = image;
                 sentLyric = lyric;
-                if (jumped) jumpedAt = DateTime.Now;
                 sentStart = start;
+                sentDuration = DurationMillis(track);
                 sentPlaying = playing;
                 sentAt = DateTime.Now;
             }
@@ -332,6 +332,7 @@ namespace Nowcast
                 sentKey = key;
                 sentImage = image;
                 sentStart = null;
+                sentDuration = 0;
                 sentPlaying = null;
                 sentAt = DateTime.Now;
             }
@@ -374,22 +375,69 @@ namespace Nowcast
         // again as a seek, and Discord stopped passing it on to anyone else.
         long? StartFor(Track track)
         {
-            if (track.Duration <= 0 && track.Position <= 0 && track.UpdatedAt == 0) return null;
-            var same = track.Key == timelineKey && track.IsPlaying == timelinePlaying;
-            if (same && timelineStart.HasValue && track.Position == timelinePosition && track.UpdatedAt == timelineUpdated) return timelineStart;
-            // A new position under the old time: the time is stale, the position is as of now.
-            var updatedAt = same && track.UpdatedAt == timelineUpdated ? 0 : track.UpdatedAt;
+            var now = TimelineNow();
+            var sameTrack = track.Key == timelineKey;
+            var samePlayback = sameTrack && track.IsPlaying == timelinePlaying;
+            var positionChanged = !sameTrack || track.Position != timelinePosition;
+            if (track.Duration <= 0 && track.Position <= 0 && track.UpdatedAt == 0)
+            {
+                // A temporary missing report must not erase a known running clock.
+                if (samePlayback && timelineStart.HasValue) return timelineStart;
+                timelineKey = track.Key;
+                timelinePlaying = track.IsPlaying;
+                timelinePosition = track.Position;
+                timelineUpdated = track.UpdatedAt;
+                timelineStart = null;
+                return null;
+            }
+            if (samePlayback && timelineStart.HasValue && !positionChanged)
+            {
+                // Some players refresh LastUpdatedTime without moving Position.
+                // Keep the established clock instead of repeatedly moving it backwards.
+                timelineUpdated = track.UpdatedAt;
+                return timelineStart;
+            }
+            var updatedAt = sameTrack && track.UpdatedAt == timelineUpdated ? 0 : track.UpdatedAt;
+            long candidate;
+            if (sameTrack && !samePlayback && timelineStart.HasValue && !positionChanged)
+            {
+                // Pause/resume may arrive before the player refreshes its position.
+                var position = timelinePlaying ? Math.Max(0, now - timelineStart.Value) / 1000.0 : timelinePausedPosition;
+                if (track.Duration > 0) position = Math.Min(position, track.Duration);
+                candidate = now - (long)(position * 1000);
+            }
+            else
+            {
+                candidate = StartedAt(track, updatedAt, now);
+            }
+            // Sub-second rounding in coarse player reports is not a seek.
+            if (samePlayback && track.IsPlaying && timelineStart.HasValue && Math.Abs(candidate - timelineStart.Value) <= 1500)
+                candidate = timelineStart.Value;
             timelineKey = track.Key;
             timelinePlaying = track.IsPlaying;
             timelinePosition = track.Position;
             timelineUpdated = track.UpdatedAt;
-            timelineStart = StartedAt(track, updatedAt);
+            timelineStart = candidate;
+            if (!track.IsPlaying) timelinePausedPosition = Math.Max(0, now - candidate) / 1000.0;
             return timelineStart;
         }
 
-        static long? StartedAt(Track track, long updatedAt)
+        internal bool TimingChanged(Track track, long? start)
         {
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            if (start.HasValue != sentStart.HasValue) return true;
+            if (!start.HasValue) return false;
+            var duration = DurationMillis(track);
+            return Math.Abs(start.Value - sentStart.Value) > 3000 ||
+                (duration == 0) != (sentDuration == 0) || Math.Abs(duration - sentDuration) >= 1000;
+        }
+
+        static long DurationMillis(Track track)
+        {
+            return track == null || track.Duration <= 0 ? 0 : (long)(track.Duration * 1000);
+        }
+
+        static long StartedAt(Track track, long updatedAt, long now)
+        {
             var position = track.Position * 1000;
             // The position is as of updatedAt; it has played on since.
             if (track.IsPlaying && updatedAt > 0) position += Math.Max(0, now - updatedAt);

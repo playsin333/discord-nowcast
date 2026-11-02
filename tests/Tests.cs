@@ -34,6 +34,10 @@ namespace Nowcast
             Run("titles from sites", Repair);
             Run("frozen timeline", FrozenTimeline);
             Run("no length, a position", NoLength);
+            Run("fresh timestamps do not reset a frozen position", TimelineFreshStamps);
+            Run("repeated seeks, pause, resume and repeat", TimelineTransitions);
+            Run("late duration updates the Discord timer", TimelineLateDuration);
+            Run("temporary missing timeline keeps its anchor", TimelineMissingReport);
             Run("cover without Spotify's logo", CoverCrop);
             Run("cover after the network is back", CoverAfterFailures);
             Run("cover link renewed before the host deletes it", CoverRenewed);
@@ -47,7 +51,6 @@ namespace Nowcast
             Run("picked picture when there is no cover", FallbackPicture);
             Run("lyrics", LyricsLines);
             Run("lyrics looked up again after an error", LyricsRetry);
-            Run("hosts that failed are left out", HostsLeftOut);
             Run("VPS picture lifetimes and moderation rejection", HostFallback);
             Run("custom status reports, renews and retries", StatusReports);
             Run("tracked picture carries installation and slot", TrackedPicture);
@@ -206,6 +209,104 @@ namespace Nowcast
             Check(again.Value - start.Value > 90000, "a repeat starts the time again");
             var timestamps = (Dictionary<string, object>)Activity.Build(track, again, new Settings { CoverSource = "none" })["timestamps"];
             Check(timestamps.ContainsKey("start") && !timestamps.ContainsKey("end"), "start only, no end");
+        }
+
+        static void WithTimeline(Action<Engine, Func<Track, long?>, Action<long>> test)
+        {
+            var saved = Engine.TimelineNow;
+            var clock = 1000000000000L;
+            Engine.TimelineNow = delegate { return clock; };
+            var engine = (Engine)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(Engine));
+            var startFor = typeof(Engine).GetMethod("StartFor", BindingFlags.NonPublic | BindingFlags.Instance);
+            try { test(engine, t => (long?)startFor.Invoke(engine, new object[] { t }), t => clock = t); }
+            finally { Engine.TimelineNow = saved; }
+        }
+
+        static void RememberTiming(Engine engine, long? start, long duration)
+        {
+            typeof(Engine).GetField("sentStart", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(engine,start);
+            typeof(Engine).GetField("sentDuration", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(engine,duration);
+        }
+
+        static void TimelineFreshStamps()
+        {
+            WithTimeline(delegate(Engine engine, Func<Track,long?> start, Action<long> at)
+            {
+                const long now=1000000000000L;
+                var track=Track("SoundCloud", "Dean", "Song");
+                track.IsPlaying=true; track.Duration=200; track.Position=10; track.UpdatedAt=now;
+                var first=start(track);
+                at(now+5000); track.UpdatedAt=now+5000;
+                Check(start(track)==first,"a newer timestamp with the same position does not shift the clock");
+                track.Position=15;
+                Check(start(track)==first,"a coarse position catches up without a false seek");
+                at(now+6000); track.Position=15.5; track.UpdatedAt=now+6000;
+                Check(start(track)==first,"sub-second rounding does not jitter the clock");
+            });
+        }
+
+        static void TimelineTransitions()
+        {
+            WithTimeline(delegate(Engine engine, Func<Track,long?> start, Action<long> at)
+            {
+                const long now=1000000000000L;
+                var track=Track("SoundCloud", "Dean", "Song");
+                track.IsPlaying=true; track.Duration=200; track.Position=10; track.UpdatedAt=now;
+                RememberTiming(engine,start(track),200000);
+                at(now+7000); track.Position=70; track.UpdatedAt=now+7000;
+                var firstSeek=start(track);
+                Check(engine.TimingChanged(track,firstSeek),"first seek is pending");
+                RememberTiming(engine,firstSeek,200000);
+                at(now+8000); track.Position=20; track.UpdatedAt=now+8000;
+                var secondSeek=start(track);
+                Check(engine.TimingChanged(track,secondSeek),"second seek within a second is also pending");
+                at(now+10000); track.IsPlaying=false;
+                var paused=start(track);
+                Check(now+10000-paused.Value==22000,"pause freezes the predicted position when the raw sample is stale");
+                Check(!Activity.Build(track,paused,new Settings()).ContainsKey("timestamps"),"paused status has no running timestamps");
+                at(now+15000); track.UpdatedAt=now+15000;
+                Check(start(track)==paused,"a pause does not count time forward");
+                at(now+20000); track.IsPlaying=true;
+                var resumed=start(track);
+                Check(now+20000-resumed.Value==22000,"resume continues from the frozen position");
+                at(now+21000); track.Position=0; track.UpdatedAt=now+21000;
+                Check(start(track)==now+21000,"repeating the same track restarts at zero");
+            });
+        }
+
+        static void TimelineLateDuration()
+        {
+            WithTimeline(delegate(Engine engine, Func<Track,long?> start, Action<long> at)
+            {
+                const long now=1000000000000L;
+                var track=Track("SoundCloud", "Dean", "Song");
+                track.IsPlaying=true; track.Position=30; track.UpdatedAt=now;
+                var first=start(track);
+                RememberTiming(engine,first,0);
+                at(now+2000); track.Duration=200; track.UpdatedAt=now+2000;
+                var current=start(track);
+                Check(current==first && engine.TimingChanged(track,current),"duration arriving later queues a resend without moving the start");
+                var times=(Dictionary<string,object>)Activity.Build(track,current,new Settings())["timestamps"];
+                Check((long)times["end"]==first.Value+200000,"Discord receives the newly known end time");
+                RememberTiming(engine,current,200000);
+                Check(!engine.TimingChanged(track,current),"unchanged timing does not spam Discord");
+                track.Duration=200.25;
+                Check(!engine.TimingChanged(track,current),"small duration rounding does not trigger another resend");
+            });
+        }
+
+        static void TimelineMissingReport()
+        {
+            WithTimeline(delegate(Engine engine, Func<Track,long?> start, Action<long> at)
+            {
+                var track=Track("SoundCloud", "Dean", "Song");
+                track.IsPlaying=true;track.Duration=200;track.Position=10;
+                var known=start(track);
+                track.Duration=0;track.Position=0;track.UpdatedAt=0;
+                Check(start(track)==known,"temporary missing data does not reset a known track");
+                track.Title="Other song";
+                Check(start(track)==null,"a different track never inherits the old clock");
+            });
         }
 
         // Spotify's picture: the artwork with its logo below on a transparent strip.
@@ -552,33 +653,9 @@ namespace Nowcast
             }
         }
 
-        static void HostsLeftOut()
-        {
-            var order = typeof(Hosts).GetMethod("Order", BindingFlags.NonPublic | BindingFlags.Static);
-            var downUntil = (DateTime[])typeof(Hosts).GetField("downUntil", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
-            var now = DateTime.Now;
-            try
-            {
-                Check(((List<int>)order.Invoke(null, new object[] { now })).Count == downUntil.Length, "all tried");
-                Check(((List<int>)order.Invoke(null, new object[] { now }))[0] == 0, "ours first");
-                downUntil[0] = now.AddMinutes(5);
-                var some = (List<int>)order.Invoke(null, new object[] { now });
-                Check(!some.Contains(0) && some.Count == downUntil.Length - 1, "a failed host left out");
-                for (var i = 0; i < downUntil.Length; i++) downUntil[i] = now.AddMinutes(10 + i);
-                downUntil[1] = now.AddMinutes(1);
-                var one = (List<int>)order.Invoke(null, new object[] { now });
-                Check(one.Count == 1 && one[0] == 1, "reserve stays available during the Cloudflare pause");
-            }
-            finally
-            {
-                for (var i = 0; i < downUntil.Length; i++) downUntil[i] = DateTime.MinValue;
-            }
-        }
-
         class FakeHostHandler : System.Net.Http.HttpMessageHandler
         {
             public int PrimaryStatus = 503;
-            public string FailureBody;
             public readonly List<string> Requests = new List<string>();
             public string Installation, Slot;
             protected override System.Threading.Tasks.Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken cancellation)
@@ -587,9 +664,9 @@ namespace Nowcast
                 Requests.Add(origin);
                 if (request.Headers.Contains("X-Nowcast-Installation")) Installation = request.Headers.GetValues("X-Nowcast-Installation").First();
                 if (request.Headers.Contains("X-Nowcast-Slot")) Slot = request.Headers.GetValues("X-Nowcast-Slot").First();
-                var status = origin == Hosts.Own ? PrimaryStatus : 200;
+                var status = PrimaryStatus;
                 var response = new System.Net.Http.HttpResponseMessage((System.Net.HttpStatusCode)status);
-                response.Content = new System.Net.Http.StringContent(status == 200 ? origin + "/" + new string('a', 40) + ".png" : FailureBody ?? (status == 403 ? "Banned" : "unavailable"));
+                response.Content = new System.Net.Http.StringContent(status == 200 ? origin + "/" + new string('a', 40) + ".png" : (status == 403 ? "Banned" : "unavailable"));
                 return System.Threading.Tasks.Task.FromResult(response);
             }
         }
@@ -619,47 +696,34 @@ namespace Nowcast
         static void HostFallback()
         {
             var saved = Hosts.UploadHttp;
-            var savedClock = Hosts.Now;
-            var clock = new DateTime(2026,10,29,13,0,0,DateTimeKind.Utc);
-            Hosts.Now = delegate { return clock; };
-            var down = (DateTime[])typeof(Hosts).GetField("downUntil", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
             try
             {
-                var fake = new FakeHostHandler();
+                var fake = new FakeHostHandler { PrimaryStatus = 200 };
                 Hosts.UploadHttp = new System.Net.Http.HttpClient(fake);
-                var got = Hosts.UploadOwn(new byte[] { 0x89, 0x50 });
-                Check(got.Url.StartsWith(Hosts.Reserve + "/") && got.Keep == TimeSpan.FromHours(6), "six-hour reserve for own pictures");
-                Check(fake.Requests.Count == 2 && fake.Requests[0] == Hosts.Own && fake.Requests[1] == Hosts.Reserve, "Cloudflare first, then reserve on error");
-                Check(down[0] == clock.AddMinutes(30), "Cloudflare paused for exactly 30 minutes");
-                clock = clock.AddMinutes(29).AddSeconds(59);
-                fake.Requests.Clear();
-                var player = Hosts.Upload(new byte[] { 0x89, 0x50 });
-                Check(player.Url.StartsWith(Hosts.Reserve + "/") && player.Keep == TimeSpan.FromHours(1), "player cover uses VPS with one-hour lifetime");
-                Check(fake.Requests.Count == 1 && fake.Requests[0] == Hosts.Reserve, "Cloudflare is not retried before the deadline");
-                clock = clock.AddSeconds(1);
-                fake.PrimaryStatus = 200;
-                fake.Requests.Clear();
-                Check(Hosts.Upload(new byte[] { 1 }).Url.StartsWith(Hosts.Own + "/"), "Cloudflare tried again at 30 minutes");
-                Check(fake.Requests.Count == 1 && fake.Requests[0] == Hosts.Own, "recovered Cloudflare regains priority");
+                var own = Hosts.UploadOwn(new byte[] { 0x89, 0x50 });
+                var player = Hosts.Upload(new byte[] { 1 });
+                Check(own.Keep == TimeSpan.FromHours(6) && player.Keep == TimeSpan.FromHours(1), "picture lifetimes preserved");
+                Check(fake.Requests.Count == 2 && fake.Requests.All(origin => origin == Hosts.Reserve), "all pictures go directly to VPS");
                 foreach (var status in new[] { 403, 451, 413, 415 })
                 {
                     fake.PrimaryStatus = status;
                     fake.Requests.Clear();
                     var rejected = false;
                     try { Hosts.UploadOwn(new byte[] { 1 }); } catch (Hosts.Rejected) { rejected = true; }
-                    Check(rejected && fake.Requests.Count == 1, "rejection never falls back: " + status);
+                    Check(rejected && fake.Requests.Count == 1, "moderation rejection preserved: " + status);
                 }
-                fake.PrimaryStatus = 403;
-                fake.FailureBody = "error code: 1010";
+                fake.PrimaryStatus = 503;
                 fake.Requests.Clear();
-                Check(Hosts.Upload(new byte[] { 1 }).Url.StartsWith(Hosts.Reserve + "/"), "Cloudflare infrastructure rejection can use the reserve");
+                var failed = false;
+                try { Hosts.Upload(new byte[] { 1 }); } catch (InvalidOperationException) { failed = true; }
+                Check(failed && fake.Requests.Count == 1 && fake.Requests[0] == Hosts.Reserve, "VPS outage never sends images to Cloudflare");
+                fake.PrimaryStatus = 200;
+                Check(Hosts.Upload(new byte[] { 1 }).Url.StartsWith(Hosts.Reserve + "/"), "VPS is retried after recovery");
             }
             finally
             {
                 Hosts.UploadHttp.Dispose();
                 Hosts.UploadHttp = saved;
-                Hosts.Now = savedClock;
-                for (var i = 0; i < down.Length; i++) down[i] = DateTime.MinValue;
             }
         }
 

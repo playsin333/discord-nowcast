@@ -318,65 +318,46 @@ func TestPictureFromFile(t *testing.T) {
 }
 
 func TestHosts(t *testing.T) {
-	var primaryStatus atomic.Int32
-	var primaryCalls, reserveCalls atomic.Int32
-	primaryStatus.Store(503)
-	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		primaryCalls.Add(1)
-		if status := int(primaryStatus.Load()); status != 200 {
-			message := "unavailable"
-			if status == 403 {
-				message = "Banned"
-			}
-			http.Error(w, message, status)
-			return
+	var status atomic.Int32
+	var calls atomic.Int32
+	status.Store(200)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(int(status.Load()))
+		if status.Load() == 200 {
+			fmt.Fprint(w, "http://"+r.Host+"/"+strings.Repeat("a", 40)+".png")
+		} else if status.Load() == 403 {
+			fmt.Fprint(w, "Banned")
 		}
-		fmt.Fprintf(w, "http://%s/%s.png", r.Host, strings.Repeat("a", 40))
 	}))
-	defer primary.Close()
-	reserve := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reserveCalls.Add(1)
-		if r.Header.Get("Content-Type") != "image/png" || !strings.HasPrefix(r.Header.Get("User-Agent"), "discord-nowcast/") {
-			http.Error(w, "bad request", 400)
-			return
+	defer server.Close()
+	saved := reserveHost
+	reserveHost = server.URL
+	defer func() { reserveHost = saved }()
+	for _, own := range []bool{false, true} {
+		var got Uploaded
+		var err error
+		keep := time.Hour
+		if own {
+			got, err = uploadOwn([]byte{1})
+			keep = 6 * time.Hour
+		} else {
+			got, err = upload([]byte{1})
 		}
-		fmt.Fprintf(w, "http://%s/%s.png", r.Host, strings.Repeat("a", 40))
-	}))
-	defer reserve.Close()
-	savedOwn, savedReserve, savedClock, savedHosts := ownHost, reserveHost, hostNow, hosts
-	ownHost, reserveHost = primary.URL, reserve.URL
-	clock := time.Date(2026, 10, 29, 13, 0, 0, 0, time.UTC)
-	hostNow = func() time.Time { return clock }
-	hosts = []*host{
-		{name: "nowcast", keep: time.Hour, upload: func(image []byte) (string, error) { return toOwn(image, "") }},
-		{name: "vps", keep: time.Hour, upload: func(image []byte) (string, error) { return toManaged(reserveHost, image, "") }},
+		if err != nil || !strings.HasPrefix(got.URL, server.URL+"/") || got.Keep != keep {
+			t.Fatalf("direct VPS upload, own=%v: %+v %v", own, got, err)
+		}
 	}
-	defer func() { ownHost, reserveHost, hostNow, hosts = savedOwn, savedReserve, savedClock, savedHosts }()
-	image := []byte{0x89, 0x50, 1, 2}
-	got, err := upload(image)
-	if err != nil || !strings.HasPrefix(got.URL, reserve.URL) || got.Keep != time.Hour {
-		t.Fatalf("reserve after failure: %+v %v", got, err)
+	for _, code := range []int32{403, 451, 413, 415, 429, 503} {
+		status.Store(code)
+		before := calls.Load()
+		if _, err := upload([]byte{1}); err == nil || calls.Load() != before+1 {
+			t.Fatalf("one VPS request on failure %d", code)
+		}
 	}
-	if primaryCalls.Load() != 1 || reserveCalls.Load() != 1 || !hosts[0].downUntil.Equal(clock.Add(30*time.Minute)) {
-		t.Fatal("pause must be exactly 30 minutes")
-	}
-	clock = clock.Add(30*time.Minute - time.Second)
-	if _, err := upload(image); err != nil || primaryCalls.Load() != 1 || reserveCalls.Load() != 2 {
-		t.Fatal("do not retry Cloudflare before the deadline")
-	}
-	clock = clock.Add(time.Second)
-	primaryStatus.Store(200)
-	got, err = uploadOwn(image)
-	if err != nil || !strings.HasPrefix(got.URL, primary.URL) || got.Keep != 6*time.Hour || primaryCalls.Load() != 2 || reserveCalls.Load() != 2 {
-		t.Fatalf("return to recovered Cloudflare: %+v %v", got, err)
-	}
-	primaryStatus.Store(403)
-	if _, err := uploadOwn(image); err == nil || reserveCalls.Load() != 2 {
-		t.Fatal("ban must not bypass to the reserve")
-	}
-	primaryStatus.Store(503)
-	if _, err := upload(image); err != nil || !hosts[0].downUntil.Equal(clock.Add(30*time.Minute)) {
-		t.Fatal("another failure starts another 30-minute pause")
+	status.Store(200)
+	if _, err := upload([]byte{1}); err != nil {
+		t.Fatal("VPS is retried after recovery:", err)
 	}
 }
 

@@ -131,7 +131,7 @@ Windows already knows what is playing: it is the track card that pops up when yo
 
 - **Source name.** Taken from the app's ID. A site installed as an app (SoundCloud or YouTube Music via *Install* in Chrome or Edge) is named as in the Start menu. In a regular browser tab the site is told by the window title: the window whose title holds the track is searched for YouTube, Twitch, SoundCloud and the rest. So the status says SoundCloud, not Chrome.
 - **"Listening to SoundCloud".** Discord puts the name of the application that sent the status after "Listening to". So each service has a Discord application of its own, and discord-nowcast reconnects to the right one when the source changes. YouTube and Twitch go out as "Watching", except YouTube music channels ("Artist - Topic" and VEVO): those read "Listening to YouTube".
-- **Cover art.** The player's picture is scaled to 300 pixels. Uploads try Cloudflare first and then the program's server on a network error, timeout or temporary failure. After such a failure Cloudflare is skipped for 30 minutes; the next upload after the deadline tries it first again. Player covers are kept for one hour and renew after 48 minutes while needed. Manually picked pictures are kept for six hours and renew after 4 hours 48 minutes; only those appear in the moderation gallery. A new status is sent immediately, with its image following in the background. Direct CDN links and iTunes search work as before.
+- **Cover art.** The player's picture is scaled to 300 pixels. Images upload directly to the program's server without a Cloudflare intermediary. Player covers are kept for one hour and renew after 48 minutes while needed. Manually picked pictures are kept for six hours and renew after 4 hours 48 minutes; only those appear in the moderation gallery. A new status is sent immediately, with its image following in the background. Direct CDN links and iTunes search work as before.
 - **The button.** Players do not tell Windows the track's link, so "Listen on …" opens a search for the track in the same service; for Yandex Music, Telegram and browsers, a YouTube search (with a Yandex Music link Discord does not show the status to others). Discord does not let you click your own buttons, only other people's.
 - **Rate limit.** Discord accepts at most five updates per 20 seconds, so the status changes at most once every four seconds.
 
@@ -146,7 +146,7 @@ Windows already knows what is playing: it is the track card that pops up when yo
 
 ## Privacy
 
-The artist and title go to Discord and, when enabled, to lrclib.net for lyrics and iTunes for cover search. Images upload through Cloudflare or directly to the program's server; unrelated file hosts are not used. The Worker forwards to that same storage, so these are two access paths to one storage service. Player covers are kept for one hour, manually picked pictures for six hours after their last upload. Both renew while needed. Only manually picked images appear in the moderation gallery. Limits and bans use a secret-keyed IP hash, not raw addresses in the database. Blocks and banned hashes survive cleanup. Update checks contact GitHub.
+The artist and title go to Discord and, when enabled, to lrclib.net for lyrics and iTunes for cover search. Images upload directly to the program's server; unrelated file hosts are not used. Existing Cloudflare links are retained for compatibility. Player covers are kept for one hour, manually picked pictures for six hours after their last upload. Both renew while needed. Only manually picked images appear in the moderation gallery. Limits and bans use a secret-keyed IP hash, not raw addresses in the database. Blocks and banned hashes survive cleanup. Update checks contact GitHub.
 
 ## Building it yourself
 
@@ -181,7 +181,6 @@ On GitHub the program is built and checked by itself after every change.
 Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 License: [MIT](LICENSE).
-
 
 ## Custom status moderation on Windows
 

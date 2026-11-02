@@ -292,6 +292,99 @@ func TestStartFor(t *testing.T) {
 	}
 }
 
+func TestTimelineTransitions(t *testing.T) {
+	e := &Engine{}
+	const now int64 = 1000000000000
+	track := &Track{App: "soundcloud", Source: &SourceInfo{Name: "SoundCloud"}, Title: "Song", IsPlaying: true, Duration: 200, Position: 10, UpdatedAt: now}
+	first := *e.startFor(track, now)
+	track.UpdatedAt = now + 5000
+	if got := *e.startFor(track, now+5000); got != first {
+		t.Fatal("fresh timestamp must not reset a frozen position")
+	}
+	track.Position = 15
+	if got := *e.startFor(track, now+5000); got != first {
+		t.Fatal("coarse position catches up without a seek")
+	}
+	track.Position = 15.5
+	track.UpdatedAt = now + 6000
+	if got := *e.startFor(track, now+6000); got != first {
+		t.Fatal("rounding must not jitter the timer")
+	}
+	e.sentStart = &first
+	e.sentDuration = 200000
+	track.Position = 70
+	track.UpdatedAt = now + 7000
+	seek := *e.startFor(track, now+7000)
+	if !e.timingChanged(track, &seek) {
+		t.Fatal("first seek is pending")
+	}
+	e.sentStart = &seek
+	track.Position = 20
+	track.UpdatedAt = now + 8000
+	next := e.startFor(track, now+8000)
+	if !e.timingChanged(track, next) {
+		t.Fatal("second seek inside 30 seconds must also be pending")
+	}
+	track.IsPlaying = false
+	paused := *e.startFor(track, now+10000)
+	if now+10000-paused != 22000 {
+		t.Fatal("pause freezes estimated position when raw position is stale")
+	}
+	if _, ok := buildActivity(track, &paused, defaultSettings(), "", "")["timestamps"]; ok {
+		t.Fatal("pause must not have a running Discord timer")
+	}
+	track.UpdatedAt = now + 15000
+	if got := *e.startFor(track, now+15000); got != paused {
+		t.Fatal("pause must stay frozen")
+	}
+	track.IsPlaying = true
+	resumed := *e.startFor(track, now+20000)
+	if now+20000-resumed != 22000 {
+		t.Fatal("resume continues from frozen position")
+	}
+	track.Position = 0
+	track.UpdatedAt = now + 21000
+	if got := *e.startFor(track, now+21000); got != now+21000 {
+		t.Fatal("repeat restarts at zero")
+	}
+}
+
+func TestLateTimelineDuration(t *testing.T) {
+	e := &Engine{}
+	const now int64 = 1000000000000
+	track := &Track{App: "soundcloud", Source: &SourceInfo{Name: "SoundCloud"}, Title: "Song", IsPlaying: true, Position: 30, UpdatedAt: now}
+	first := *e.startFor(track, now)
+	e.sentStart = &first
+	track.Duration = 200
+	track.UpdatedAt = now + 2000
+	start := e.startFor(track, now+2000)
+	if *start != first || !e.timingChanged(track, start) {
+		t.Fatal("late duration must queue a resend without shifting start")
+	}
+	times := buildActivity(track, start, defaultSettings(), "", "")["timestamps"].(object)
+	if times["end"].(int64) != first+200000 {
+		t.Fatal("newly known end must be sent to Discord")
+	}
+	e.sentDuration = 200000
+	if e.timingChanged(track, start) {
+		t.Fatal("unchanged timing must not spam Discord")
+	}
+	track.Duration = 200.25
+	if e.timingChanged(track, start) {
+		t.Fatal("duration rounding must not spam Discord")
+	}
+	track.Duration = 0
+	track.Position = 0
+	track.UpdatedAt = 0
+	if *e.startFor(track, now+3000) != first {
+		t.Fatal("missing report must preserve the known clock")
+	}
+	track.Title = "Other song"
+	if e.startFor(track, now+4000) != nil {
+		t.Fatal("another track must not inherit the old clock")
+	}
+}
+
 func TestPick(t *testing.T) {
 	e := &Engine{settings: defaultSettings()}
 	s := e.settings

@@ -8,13 +8,10 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 )
 
-// Hosts for the player's picture: Discord only shows pictures by URL. Our
-// own Cloudflare Worker first, then our VPS. Both support moderation.
-var ownHost = "https://nowcast-covers.playsin333.workers.dev"
+// Pictures upload directly to the VPS, which enforces moderation.
 var reserveHost = "https://nowcast.85-192-42-111.sslip.io:10443"
 var uploadClient = &http.Client{Timeout: 6 * time.Second}
 
@@ -27,113 +24,27 @@ type Uploaded struct {
 	Keep time.Duration
 }
 
-type host struct {
-	name   string
-	keep   time.Duration
-	upload func([]byte) (string, error)
-	// How long it took last time, in ms; the start values keep the order above.
-	took      int
-	downUntil time.Time
-	failures  int
-}
-
-var hosts = []*host{
-	{name: "nowcast", keep: time.Hour, upload: func(image []byte) (string, error) { return toOwn(image, "") }, took: 800},
-	{name: "vps", keep: time.Hour, upload: func(image []byte) (string, error) { return toManaged(reserveHost, image, "") }, took: 1000},
-}
-
-var (
-	hostBook sync.Mutex
-	// No new Cloudflare attempts for 30 minutes after a transient error.
-	hostNow = time.Now
-)
-
-// Try Cloudflare, then the VPS on a transient failure. Rejections are final.
+// A failed request is retried by the cover lookup without switching hosts.
 func upload(image []byte) (Uploaded, error) {
 	return uploadManaged(image, "")
 }
 
 func uploadManaged(image []byte, query string) (Uploaded, error) {
-	var last error
-	for _, h := range hostOrder(hostNow()) {
-		var url string
-		var err error
-		if query == "" {
-			url, err = uploadTo(h, image)
-		} else {
-			origin := ownHost
-			if h.name == "vps" {
-				origin = reserveHost
-			}
-			url, err = toManaged(origin, image, query)
-			recordHost(h, time.Now(), err)
-		}
-		if err == nil {
-			keep := h.keep
-			if query != "" {
-				keep = 6 * time.Hour
-			}
-			return Uploaded{URL: url, Keep: keep}, nil
-		}
-		var rejected *uploadRejection
-		if errors.As(err, &rejected) {
-			return Uploaded{}, err
-		}
-		last = err
-	}
-	return Uploaded{}, last
-}
-
-func hostOrder(now time.Time) []*host {
-	hostBook.Lock()
-	defer hostBook.Unlock()
-	var order []*host
-	if !now.Before(hosts[0].downUntil) {
-		order = append(order, hosts[0])
-	}
-	order = append(order, hosts[1])
-	// Keep fixed priority: recovered Cloudflare regains first place.
-	return order
-}
-
-// One upload to one host, with the book-keeping: how long it took, or that the host is down.
-func uploadTo(h *host, image []byte) (string, error) {
-	begin := time.Now()
-	url, err := h.upload(image)
-	recordHost(h, begin, err)
-	return url, err
-}
-
-func recordHost(h *host, begin time.Time, err error) {
-	hostBook.Lock()
-	defer hostBook.Unlock()
+	url, err := toManaged(reserveHost, image, query)
 	if err != nil {
-		var rejected *uploadRejection
-		if errors.As(err, &rejected) {
-			return
-		}
-		logf("%s failed: %v", h.name, err)
-		if h == hosts[0] {
-			h.downUntil = hostNow().Add(30 * time.Minute)
-		}
-		h.failures++
-		return
+		return Uploaded{}, err
 	}
-	h.took = (h.took + int(time.Since(begin).Milliseconds())) / 2
-	h.failures = 0
-	h.downUntil = time.Time{}
+	keep := time.Hour
+	if query != "" {
+		keep = 6 * time.Hour
+	}
+	return Uploaded{URL: url, Keep: keep}, nil
 }
 
 // A picture of one's own status goes to our host alone, where a bad one can
 // be removed and its uploader banned; renewed before its six-hour expiry.
 func uploadOwn(image []byte) (Uploaded, error) {
 	return uploadManaged(image, "?kind=own")
-}
-
-// Ours: the picture itself in the body, the link in the reply. Named by its
-// hash, so one album's cover is kept once for everyone.
-func toOwn(image []byte, query string) (string, error) {
-	return toManaged(ownHost, image, query)
 }
 
 type uploadRejection struct {
@@ -143,6 +54,8 @@ type uploadRejection struct {
 
 func (e *uploadRejection) Error() string { return fmt.Sprintf("%d %s", e.status, e.message) }
 
+// The picture itself in the body, the link in the reply. Named by its
+// hash, so one album's cover is kept once for everyone.
 func toManaged(origin string, image []byte, query string) (string, error) {
 	kind := "image/jpeg"
 	if isPNG(image) {

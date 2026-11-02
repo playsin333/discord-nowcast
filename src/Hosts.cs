@@ -1,24 +1,16 @@
 using System;
-using System.Collections.Generic;
 using System.Net.Http;
 using System.Text.RegularExpressions;
 
 namespace Nowcast
 {
-    // Cloudflare first, our VPS on an outage. A moderation rejection must
-    // never escape to an unrelated public host.
+    // Upload directly to the VPS. Keep the legacy origin only to recognize old links.
     static class Hosts
     {
         public static readonly HttpClient Http = Client();
         internal static HttpClient UploadHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
         public const string Own = "https://nowcast-covers.playsin333.workers.dev";
         public const string Reserve = "https://nowcast.85-192-42-111.sslip.io:10443";
-        static readonly string[] hosts = { Own, Reserve };
-        static readonly DateTime[] downUntil = new DateTime[hosts.Length];
-        static readonly int[] failures = new int[hosts.Length];
-        internal static Func<DateTime> Now = delegate { return DateTime.UtcNow; };
-        static readonly object book = new object();
-
         static HttpClient Client()
         {
             var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
@@ -42,42 +34,7 @@ namespace Nowcast
 
         static Uploaded Managed(byte[] image, string query, string slot = null)
         {
-            Exception last = null;
-            // Tracked files go directly to the same VPS storage: older Workers
-            // do not forward installation/slot metadata.
-            foreach (var host in slot == null ? Order(Now()) : new List<int> { 1 })
-            {
-                try
-                {
-                    var url = To(hosts[host], image, query, slot);
-                    lock (book) { failures[host] = 0; downUntil[host] = DateTime.MinValue; }
-                    return new Uploaded { Url = url, Keep = TimeSpan.FromHours(query == "" ? 1 : 6) };
-                }
-                catch (Rejected) { throw; }
-                catch (Exception e)
-                {
-                    last = e;
-                    Log.Write(hosts[host] + " failed: " + e.GetBaseException().Message);
-                    lock (book)
-                    {
-                        if (host == 0) downUntil[host] = Now().AddMinutes(30);
-                        failures[host]++;
-                    }
-                }
-            }
-            throw last ?? new InvalidOperationException("No cover host available");
-        }
-
-        // Fixed priority: a recovered Cloudflare is tried before the VPS.
-        static List<int> Order(DateTime now)
-        {
-            var result = new List<int>();
-            lock (book)
-            {
-                if (now >= downUntil[0]) result.Add(0);
-                result.Add(1); // Always allow the reserve, even during a Cloudflare pause.
-            }
-            return result;
+            return new Uploaded { Url = To(Reserve, image, query, slot), Keep = TimeSpan.FromHours(query == "" ? 1 : 6) };
         }
 
         static string To(string origin, byte[] image, string query, string slot)
