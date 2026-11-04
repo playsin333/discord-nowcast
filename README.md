@@ -11,12 +11,12 @@
 [![release](https://img.shields.io/github/v/release/playsin333/discord-nowcast?color=5865f2)](https://github.com/playsin333/discord-nowcast/releases/latest)
 [![downloads](https://img.shields.io/github/downloads/playsin333/discord-nowcast/total?color=3d3c38)](https://github.com/playsin333/discord-nowcast/releases)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux%20(beta)-3d3c38)
-[![discord](https://img.shields.io/badge/discord-%D1%81%D0%B5%D1%80%D0%B2%D0%B5%D1%80-5865f2)](https://discord.gg/SsANGaMr3M)
+[![discord](https://img.shields.io/badge/discord-%D1%81%D0%B5%D1%80%D0%B2%D0%B5%D1%80-5865f2)](https://discord.gg/brMD3VYUAu)
 [![license](https://img.shields.io/badge/license-MIT-3d3c38)](LICENSE)
 
 **Русский** · [English](README.en.md)
 
-**[⬇ Скачать discord-nowcast.exe](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast.exe)** · [Linux](#linux-бета) · [Сервер в Discord](https://discord.gg/SsANGaMr3M) · [Обсуждения](https://github.com/playsin333/discord-nowcast/discussions) · [Сообщить о баге](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml)
+**[⬇ Скачать discord-nowcast.exe](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast.exe)** · [Linux](#linux-бета) · [Сервер в Discord](https://discord.gg/brMD3VYUAu) · [Обсуждения](https://github.com/playsin333/discord-nowcast/discussions) · [Сообщить о баге](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml)
 
 </div>
 
@@ -103,7 +103,7 @@ Discord запущен, но Windows не даёт программе к нем�
 
 ## Linux (бета)
 
-Есть версия для Linux: тот же статус, те же приложения Discord у сервисов, обложки, кнопка и «Свой статус». Это бета: проверьте и напишите на [сервере](https://discord.gg/SsANGaMr3M), что работает, а что нет.
+Есть версия для Linux: тот же статус, те же приложения Discord у сервисов, обложки, кнопка и «Свой статус». Это бета: проверьте и напишите на [сервере](https://discord.gg/brMD3VYUAu), что работает, а что нет.
 
 **Установка.** Выберите вариант под свой дистрибутив:
 
@@ -174,7 +174,7 @@ dbus-run-session -- go test ./...
 
 ## Вопросы, баги, идеи
 
-- [Сервер в Discord](https://discord.gg/SsANGaMr3M): помощь, новости, скрины статусов. Быстрее всего ответят там.
+- [Сервер в Discord](https://discord.gg/brMD3VYUAu): помощь, новости, скрины статусов. Быстрее всего ответят там.
 - [Обсуждения](https://github.com/playsin333/discord-nowcast/discussions): вопросы, идеи, скриншоты своего статуса.
 - [Сообщить о баге](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml): больше всего помогает диагностика: меню значка → «Скопировать диагностику», и вставить в сообщение.
 

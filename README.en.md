@@ -11,12 +11,12 @@ Yandex Music, Spotify, SoundCloud, VK, Telegram, YouTube in a browser, AIMP, loc
 [![release](https://img.shields.io/github/v/release/playsin333/discord-nowcast?color=5865f2)](https://github.com/playsin333/discord-nowcast/releases/latest)
 [![downloads](https://img.shields.io/github/downloads/playsin333/discord-nowcast/total?color=3d3c38)](https://github.com/playsin333/discord-nowcast/releases)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux%20(beta)-3d3c38)
-[![discord](https://img.shields.io/badge/discord-server-5865f2)](https://discord.gg/SsANGaMr3M)
+[![discord](https://img.shields.io/badge/discord-server-5865f2)](https://discord.gg/brMD3VYUAu)
 [![license](https://img.shields.io/badge/license-MIT-3d3c38)](LICENSE)
 
 [Русский](README.md) · **English**
 
-**[⬇ Download discord-nowcast.exe](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast.exe)** · [Linux](#linux-beta) · [Discord server](https://discord.gg/SsANGaMr3M) · [Discussions](https://github.com/playsin333/discord-nowcast/discussions) · [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml)
+**[⬇ Download discord-nowcast.exe](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast.exe)** · [Linux](#linux-beta) · [Discord server](https://discord.gg/brMD3VYUAu) · [Discussions](https://github.com/playsin333/discord-nowcast/discussions) · [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml)
 
 </div>
 
@@ -103,7 +103,7 @@ Most of these are in the settings window. All of them live in `config.json` in `
 
 ## Linux (beta)
 
-There is a Linux version: the same status, the same Discord applications for the services, covers, the button and your own status. It is a beta: try it and tell us on the [server](https://discord.gg/SsANGaMr3M) what works and what does not.
+There is a Linux version: the same status, the same Discord applications for the services, covers, the button and your own status. It is a beta: try it and tell us on the [server](https://discord.gg/brMD3VYUAu) what works and what does not.
 
 **Install.** Pick the one for your distribution:
 
@@ -174,7 +174,7 @@ On GitHub the program is built and checked by itself after every change.
 
 ## Questions, bugs, ideas
 
-- [Discord server](https://discord.gg/SsANGaMr3M): help, news, status screenshots, mostly in Russian.
+- [Discord server](https://discord.gg/brMD3VYUAu): help, news, status screenshots, mostly in Russian.
 - [Discussions](https://github.com/playsin333/discord-nowcast/discussions): questions, ideas, show your setup.
 - [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml): the diagnostics help the most: tray menu → *Copy diagnostics*, then paste it into the report.
 

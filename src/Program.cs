@@ -20,7 +20,7 @@ namespace Nowcast
         public const string Version = "1.5.6";
         public const string Repo = "playsin333/discord-nowcast";
         // The project's Discord server: questions, bugs, screenshots of the status.
-        public const string DiscordInvite = "https://discord.gg/SsANGaMr3M";
+        public const string DiscordInvite = "https://discord.gg/brMD3VYUAu";
 
         [STAThread]
         static void Main(string[] args)

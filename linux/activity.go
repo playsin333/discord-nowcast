@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const discordInvite = "https://discord.gg/SsANGaMr3M"
+const discordInvite = "https://discord.gg/brMD3VYUAu"
 
 // Links on the cover and the title line. Turned off for the rest of the
 // run when this Discord turns down a status that has them.
