@@ -50,6 +50,11 @@ namespace Nowcast
                     request.Headers.TryAddWithoutValidation("X-Nowcast-Installation", StatusReporter.Installation());
                     request.Headers.TryAddWithoutValidation("X-Nowcast-Slot", slot);
                 }
+                if (query == "?kind=own")
+                {
+                    var nick = EncodedNick(Discord.UploadNick);
+                    if (nick != null) request.Headers.TryAddWithoutValidation("X-Nowcast-Discord-Nick", nick);
+                }
                 request.Headers.ExpectContinue = false;
                 using (var response = UploadHttp.SendAsync(request).GetAwaiter().GetResult())
                 {
@@ -63,6 +68,19 @@ namespace Nowcast
                     return answer;
                 }
             }
+        }
+
+        internal static string EncodedNick(string nick)
+        {
+            nick = (nick ?? "").Trim();
+            // Count Unicode characters, keeping surrogate pairs intact.
+            int end = 0, count = 0;
+            while (end < nick.Length && count++ < 80)
+            {
+                if (char.IsHighSurrogate(nick[end]) && end + 1 < nick.Length && char.IsLowSurrogate(nick[end + 1])) end++;
+                end++;
+            }
+            return end == 0 ? null : Uri.EscapeDataString(nick.Substring(0, end));
         }
 
         static bool IsPng(byte[] image) { return image.Length > 1 && image[0] == 0x89 && image[1] == 0x50; }

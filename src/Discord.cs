@@ -42,6 +42,7 @@ namespace Nowcast
 
         // The application the connection speaks for.
         public string ClientId { get; private set; }
+        internal static string UploadNick;
 
         // False once Discord has closed its end: it quit or restarted. Without
         // this a restart goes unnoticed until the track changes, since only a
@@ -89,6 +90,7 @@ namespace Nowcast
                         ClientId = clientId;
                         var data = reply["data"] as Dictionary<string, object>;
                         var user = data == null ? null : data["user"] as Dictionary<string, object>;
+                        UploadNick = user == null ? null : Value(user, "username");
                         Log.Write("Connected to Discord" + (user == null ? "" : " as " + Value(user, "username")));
                         lastMiss = null;
                         IsDenied = false;
@@ -186,6 +188,7 @@ namespace Nowcast
                 }
                 pipe = null;
                 ClientId = null;
+                UploadNick = null;
             }
         }
 

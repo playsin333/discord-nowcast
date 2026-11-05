@@ -7,7 +7,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Windows.Forms;
@@ -17,7 +16,7 @@ namespace Nowcast
     static class Program
     {
         // Raise with every release, together with a CHANGELOG.md entry.
-        public const string Version = "1.5.6";
+        public const string Version = "1.5.7";
         public const string Repo = "playsin333/discord-nowcast";
         // The project's Discord server: questions, bugs, screenshots of the status.
         public const string DiscordInvite = "https://discord.gg/brMD3VYUAu";
@@ -34,17 +33,13 @@ namespace Nowcast
             ServicePointManager.DefaultConnectionLimit = 16;
             ServicePointManager.MaxServicePointIdleTime = 10 * 60 * 1000;
 
-            bool isUpdate = args.Contains("--updated");
-            Updater.CleanUp();
-
-            // One copy at a time. After an update the old copy is still closing,
-            // so wait for it; a copy that was killed leaves the mutex abandoned,
+            // One copy at a time; a killed copy leaves the mutex abandoned,
             // which is ours to take.
             var mutex = new Mutex(false, "Local\\discord-nowcast");
             bool isFirst;
             try
             {
-                isFirst = mutex.WaitOne(isUpdate ? 15000 : 1000);
+                isFirst = mutex.WaitOne(1000);
             }
             catch (AbandonedMutexException)
             {
@@ -60,7 +55,7 @@ namespace Nowcast
             Log.Write("discord-nowcast " + Version + " " + Application.ExecutablePath);
             try
             {
-                Application.Run(new TrayApp(isUpdate));
+                Application.Run(new TrayApp());
             }
             finally
             {

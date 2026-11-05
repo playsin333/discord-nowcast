@@ -23,6 +23,7 @@ namespace Nowcast
             Directory.CreateDirectory(testFolder);
             typeof(Log).GetField("Folder").SetValue(null, testFolder);
             typeof(Log).GetField("FilePath").SetValue(null, Path.Combine(testFolder, "log.txt"));
+            Run("release version checks", ReleaseChecks);
             Run("defaults", Defaults);
             Run("cover setting from before", CoverSetting);
             Run("sources", SourcesByApp);
@@ -71,6 +72,17 @@ namespace Nowcast
             Check(!settings.HideAlbum, "album shown");
             Check(settings.CoverSource == "player" && settings.Buttons, "covers from the player and button on");
             Check(settings.InList == "source", "inList is source");
+        }
+
+        static void ReleaseChecks()
+        {
+            Check(Updater.NewerTag("{\"tag_name\":\"v99.0.0\"}") == "v99.0.0", "new version found without asset download URLs");
+            Check(Updater.NewerTag("{\"tag_name\":\"v" + Program.Version + "\"}") == null, "same version does not open browser");
+            Check(Updater.NewerTag("{\"tag_name\":\"v1.0.0\"}") == null, "older version ignored");
+            Check(Updater.NewerTag("{\"tag_name\":\"dev\"}") == null && Updater.NewerTag("{}") == null, "non-version tags ignored");
+            Check(Hosts.EncodedNick("  ") == null, "unknown username omitted");
+            var longNick = string.Concat(Enumerable.Repeat("😀", 81));
+            Check(Uri.UnescapeDataString(Hosts.EncodedNick(longNick)) == string.Concat(Enumerable.Repeat("😀", 80)), "80 Unicode characters without splitting pairs");
         }
 
         // "covers": false from before the choice is "none"; the new key wins.
@@ -657,13 +669,14 @@ namespace Nowcast
         {
             public int PrimaryStatus = 503;
             public readonly List<string> Requests = new List<string>();
-            public string Installation, Slot;
+            public string Installation, Slot, Nick;
             protected override System.Threading.Tasks.Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken cancellation)
             {
                 var origin = request.RequestUri.GetLeftPart(UriPartial.Authority);
                 Requests.Add(origin);
                 if (request.Headers.Contains("X-Nowcast-Installation")) Installation = request.Headers.GetValues("X-Nowcast-Installation").First();
                 if (request.Headers.Contains("X-Nowcast-Slot")) Slot = request.Headers.GetValues("X-Nowcast-Slot").First();
+                Nick = request.Headers.Contains("X-Nowcast-Discord-Nick") ? request.Headers.GetValues("X-Nowcast-Discord-Nick").First() : null;
                 var status = PrimaryStatus;
                 var response = new System.Net.Http.HttpResponseMessage((System.Net.HttpStatusCode)status);
                 response.Content = new System.Net.Http.StringContent(status == 200 ? origin + "/" + new string('a', 40) + ".png" : (status == 403 ? "Banned" : "unavailable"));
@@ -674,6 +687,7 @@ namespace Nowcast
         static void TrackedPicture()
         {
             var saved = Hosts.UploadHttp;
+            var savedNick = Discord.UploadNick;
             var path = StatusReporter.IdentityPath;
             var folder = Path.Combine(Path.GetTempPath(), "nowcast-tracked-" + Guid.NewGuid().ToString("N"));
             try
@@ -681,13 +695,24 @@ namespace Nowcast
                 StatusReporter.IdentityPath = Path.Combine(folder, "installation");
                 var fake = new FakeHostHandler { PrimaryStatus = 200 };
                 Hosts.UploadHttp = new System.Net.Http.HttpClient(fake);
+                Discord.UploadNick = "  Тест 😀 / &?#  ";
                 Hosts.UploadOwn(new byte[] { 0x89, 0x50 }, "status");
-                Check(fake.Requests.Count == 1 && fake.Requests[0] == Hosts.Reserve, "tracked metadata reaches VPS directly");
+                Check(fake.Nick == Uri.EscapeDataString("Тест 😀 / &?#"), "UTF-8 percent-encoded nickname accompanies picked picture");
+                Hosts.Upload(new byte[] { 0x89, 0x50 });
+                Check(fake.Nick == null, "automatic player cover has no nickname");
+                Discord.UploadNick = null;
+                Hosts.UploadOwn(new byte[] { 0x89, 0x50 }, "fallback");
+                Check(fake.Nick == null, "picture still uploads when Discord username is unavailable");
+                Discord.UploadNick = "other-user";
+                Hosts.UploadOwn(new byte[] { 0x89, 0x50 }, "status");
+                Check(fake.Nick == "other-user", "new request uses the current account nickname");
+                Check(fake.Requests.Count == 4 && fake.Requests.All(r => r == Hosts.Reserve), "tracked metadata reaches VPS directly");
                 Check(fake.Slot == "status" && fake.Installation == StatusReporter.Installation(), "same persistent token on picture and status");
             }
             finally
             {
                 Hosts.UploadHttp.Dispose(); Hosts.UploadHttp = saved;
+                Discord.UploadNick = savedNick;
                 StatusReporter.IdentityPath = path;
                 if (Directory.Exists(folder)) Directory.Delete(folder, true);
             }

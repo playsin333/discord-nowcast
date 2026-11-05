@@ -68,22 +68,24 @@ namespace Nowcast
             }
         }
 
-        // A new install starts with Windows and gets a desktop shortcut. After
-        // that your choices hold: autostart turned off or a shortcut deleted
-        // stay that way.
+        // Remember the choice for the installation, including after moving the exe.
+        // Existing installations keep their current autostart setting.
         public static void Install()
         {
-            if (IsNewInstall)
+            bool firstRun = !File.Exists(installMarker);
+            bool moved = IsNewInstall;
+            if (firstRun)
             {
-                Enable();
-                DesktopShortcut(true);
+                if (MessageBox.Show(Text.AutostartPrompt, "discord-nowcast", MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes) Enable();
+                else Disable();
+            }
+            else Refresh();
+            DesktopShortcut(firstRun);
+            if (firstRun || moved)
+            {
                 Directory.CreateDirectory(Log.Folder);
                 File.WriteAllText(installMarker, Application.ExecutablePath);
-            }
-            else
-            {
-                Refresh();
-                DesktopShortcut(false);
             }
         }
 

@@ -36,6 +36,9 @@ namespace Nowcast
             remove.Click += delegate { Remove(); };
             buttons.Controls.Add(pick);
             buttons.Controls.Add(remove);
+            var note = SettingsForm.Note(Strings.PictureModeration);
+            note.MaximumSize = new Size(280, 0);
+            buttons.Controls.Add(note);
             Controls.Add(buttons);
             ShowPicture();
         }

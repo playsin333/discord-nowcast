@@ -35,7 +35,7 @@ When the music is paused or stops, the status clears itself.
 ## Install
 
 1. **[Download `discord-nowcast.exe`](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast.exe)** and put it in a folder you will keep, for example `Documents\discord-nowcast`.
-2. **Run it.** A raven appears by the clock, a shortcut appears on the desktop, and from now on it starts with Windows. Downloaded it again, or moved it? The same happens for the new copy.
+2. **Run it.** A raven appears by the clock and a shortcut appears on the desktop. On first launch, you choose whether to start with Windows. You can change this in settings; moving the exe preserves the choice.
 
 That's all: one small file, nothing else to install. It needs Windows 10 or 11 and the Discord desktop app (not the website), with **Settings → Activity Privacy → Share your detected activities with others** turned on.
 
@@ -43,7 +43,7 @@ If Windows says *"Windows protected your PC"*, click **More info → Run anyway*
 
 ### My antivirus says it is a virus
 
-It is a false positive. The file has no digital signature, adds itself to startup and updates itself from GitHub; to antivirus heuristics that mix looks suspicious, though the program does nothing harmful, and all of its code is open in `src`. If Windows Defender says *"Operation did not complete successfully because the file contains a virus or potentially unwanted software"*:
+The file has no digital signature. Autostart is your choice, and updates are downloaded manually from GitHub. These changes do not guarantee that detections disappear; all of the code is open in `src`. If Windows Defender says *"Operation did not complete successfully because the file contains a virus or potentially unwanted software"*:
 
 1. Open **Windows Security → Virus & threat protection → Protection history**, find discord-nowcast and choose **Actions → Allow on device**.
 2. Download the exe again and save it to a regular folder. Do not run it straight from the browser or Telegram: that puts it in a temporary folder, which Defender checks harder.
@@ -72,13 +72,16 @@ The raven by the clock, at the bottom right of the screen, is how you control it
 | Hide status for an hour | clears the status for an hour; click again to bring it back |
 | Sources in the status | a checkbox per app playing now; clear one to keep, say, YouTube in the browser out of the status |
 | What Windows sees | every app reporting a track right now, playing or paused; a click copies its app ID |
-| Start with Windows | on by default |
+| Start with Windows | chosen on first launch; change your choice here |
 | Own status… | instead of the track, "Listening to nowcast", "Watching nowcast" or "Playing nowcast" with two lines of your own (the second is optional), a picture and a time (how long it has been going, up to 100 hours). With *Playing* Discord puts nowcast under the header and the lines go below it. A click on the picture or the first line in Discord opens the nowcast server. Links, casino ads and 18+ in the lines are not shown. A check by the item means it is on |
 | Settings… | the settings window: what the member list shows, where the cover comes from, your own picture for tracks without a cover, button, pause, sources, autostart, updates. Changes apply at once |
 | Open log | what was sent to Discord and any errors |
 | Copy diagnostics | copies all a support question needs: the program and Windows versions, what Windows sees, whether Discord was found, the settings and the end of the log. Paste it into your post in the help forum. Your user folder name is masked |
-| Check for updates | downloads the new version and restarts; it also checks by itself every six hours |
 | Exit | stops it and clears the status |
+
+## Windows updates
+
+The program checks once at launch. If a newer version exists, it automatically opens the latest GitHub release page in your default browser. Download the new `discord-nowcast.exe`, close Nowcast using Exit in the tray menu, replace the old exe in the same folder and start the new one. Settings are kept. There are no further checks during the session; download and replacement are manual.
 
 ## Settings
 
@@ -94,7 +97,7 @@ Most of these are in the settings window. All of them live in `config.json` in `
 | `buttons` | `false` removes the "Listen on …" button |
 | `hideAlbum` | `true` removes the status's third line with the album (in the window: *Hide the album*) |
 | `lyrics` | `true` puts the song's lyrics in the status (in the window: *Lyrics in the status*): the line being sung, as the third line in place of the album, or the second without a picture. The timed lyrics come from the open database [lrclib.net](https://lrclib.net); a track it does not have gets the usual status. Discord takes a status every 4 seconds at most, so a quick line is sometimes skipped |
-| `checkUpdates` | `false` stops the automatic update check |
+| `checkUpdates` | check once at launch and automatically open the GitHub release page if a newer version exists; `false` disables this |
 | `image` | a picture URL to show when a track has no cover. Easier: pick a picture in the settings window under *Cover art*; it comes before this link, and with *My picture on every track* it stands in for all covers and lives in the `fallback-picture` file next to config.json |
 | `own`, `ownType`, `ownTitle`, `ownLine2`, `ownMinutes` | your own status (the *Own status* window): on or off, the type (`listening`, `watching`, `playing`), line 1, line 2, how many minutes it has been going (up to 6000). The picture lives next to it, in the `own-picture` file |
 | `ownPicture`, `fallbackPicture` | Linux only: the path to your own status's picture and to the picture for tracks without a cover |
@@ -147,6 +150,8 @@ Windows already knows what is playing: it is the track card that pops up when yo
 ## Privacy
 
 The artist and title go to Discord and, when enabled, to lrclib.net for lyrics and iTunes for cover search. Images upload directly to the program's server; unrelated file hosts are not used. Existing Cloudflare links are retained for compatibility. Player covers are kept for one hour, manually picked pictures for six hours after their last upload. Both renew while needed. Only manually picked images appear in the moderation gallery. Limits and bans use a secret-keyed IP hash, not raw addresses in the database. Blocks and banned hashes survive cleanup. Update checks contact GitHub.
+
+When you upload a picture you chose yourself, your Discord username accompanies it for moderation. Automatic player covers and custom-status JSON do not include the username.
 
 ## Building it yourself
 
