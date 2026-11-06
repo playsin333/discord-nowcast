@@ -33,7 +33,7 @@ Engine.StartFor / startFor сохраняют опорное начало при
   отдельно через Edit code → Deploy. Новые клиенты при ошибке Worker работают с VPS,
   не зависят от доступности D1. После публикации Worker старые
   клиенты также передают новые картинки на VPS; для верных сроков нужен новый клиент.
-- DiscordInvite: https://discord.gg/brMD3VYUAu. Windows-тесты используют
+- DiscordInvite: https://discord.gg/udz3TTZgPD. Windows-тесты используют
   временную папку вместо настоящей fallback-picture.
 
 Показывает в статусе Discord («Слушает …», activity type 2) трек, который играет в любом приложении Windows. Один `discord-nowcast.exe` со значком в трее. Родственный проект: `playsin333/claude-code-player`, оттуда взято чтение медиасессий.
@@ -82,7 +82,7 @@ Engine.StartFor / startFor сохраняют опорное начало при
 
 ## Сервер Discord
 
-- https://discord.gg/brMD3VYUAu (ссылка на сервер), `Program.DiscordInvite`.
+- https://discord.gg/udz3TTZgPD (бессрочная ссылка на #правила), `Program.DiscordInvite`.
 
 ## Приложения Discord
 

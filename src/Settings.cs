@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 
 namespace Nowcast
@@ -23,9 +22,9 @@ namespace Nowcast
         public static readonly string FilePath = Path.Combine(Log.Folder, "config.json");
 
         // The general Discord application, for players without one of their own.
-        public const string DefaultClientId = "1562901782579912804";
+        public const string DefaultClientId = "1568313886258757733";
         // The application of one's own status: "Playing nowcast".
-        public const string OwnClientId = "1565004020647727184";
+        public const string OwnClientId = "1568313886258757733";
         // The picture of one's own status, made ready when it is picked.
         public static readonly string OwnPicturePath = Path.Combine(Log.Folder, "own-picture");
         // The picture shown when a track has no cover, made ready when it is picked.
@@ -114,25 +113,10 @@ namespace Nowcast
             File.WriteAllText(FilePath, "{\r\n" + string.Join(",\r\n", lines) + "\r\n}\r\n", new UTF8Encoding(false));
         }
 
-        // Whether one's own status is on and has a title to show, one without
-        // links and the plain words of casino ads and 18+.
+        // Text is sent only to Discord; keep the protocol's minimum title length.
         public bool ShowsOwn
         {
-            get { return Own && OwnTitle.Trim().Length >= 2 && IsClean(OwnTitle) && IsClean(OwnLine2); }
-        }
-
-        // Links: "site.com", "t.me/x", "www…", "http…" (a known zone only: "ft.Drake"
-        // and "Mr. Smith" are not links). Words: as they are
-        // written in ads; a spaced or misspelt one gets through, a lazy one does not.
-        static readonly Regex unclean = new Regex(
-            @"https?:|www\.|[\w-]\s?\.\s?(?:com|ru|net|org|io|me|gg|xyz|top|bet|casino|club|site|online|shop|store|pro|info|biz|cc|co|su|ua|kz|by|tv|link|app|dev|fun|win|vip|live|ly|to|рф)\b|" +
-            @"казино|casino|ставк|букмек|1\s?win|1\s?xbet|pin-?up|vavada|вулкан|слоты|джекпот|промокод|" +
-            @"порн|porn|onlyfans|xxx|nsfw|18\+|секс|sex|голые|nudes",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-        public static bool IsClean(string text)
-        {
-            return !unclean.IsMatch(text);
+            get { return Own && OwnTitle.Trim().Length >= 2; }
         }
 
         // The application one's own status goes out under, unless clientId names one of your own.
@@ -196,6 +180,7 @@ namespace Nowcast
         {
             var clientId = Get<string>(values, "clientId");
             if (clientId != null && clientId.Trim() != "") ClientId = clientId.Trim();
+            if (ClientId == "1562901782579912804") ClientId = DefaultClientId;
             InList = Get<string>(values, "inList") ?? InList;
             ShowPaused = Get(values, "showPaused", ShowPaused);
             var source = Get<string>(values, "coverSource");

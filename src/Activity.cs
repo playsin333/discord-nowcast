@@ -89,6 +89,7 @@ namespace Nowcast
         public static Dictionary<string, object> Own(string type, string title, string line2, long startedAt, string image)
         {
             var activity = new Dictionary<string, object> { { "type", type == "playing" ? 0 : type == "watching" ? 3 : 2 }, { "instance", false } };
+            activity["buttons"] = new[] { new Dictionary<string, object> { { "label", Text.GetNowcast }, { "url", Program.DiscordInvite } } };
             activity["details"] = Limit(title);
             if (line2.Trim() != "") activity["state"] = Limit(line2);
             activity["status_display_type"] = 0;

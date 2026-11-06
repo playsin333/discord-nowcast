@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const discordInvite = "https://discord.gg/brMD3VYUAu"
+const discordInvite = "https://discord.gg/udz3TTZgPD"
 
 // Links on the cover and the title line. Turned off for the rest of the
 // run when this Discord turns down a status that has them.
@@ -113,6 +113,7 @@ func ownActivity(kind, title, line2 string, start int64, image string) object {
 		number = 3
 	}
 	activity := object{"type": number, "instance": false}
+	activity["buttons"] = []object{{"label": text.GetNowcast, "url": discordInvite}}
 	activity["details"] = limit(title, 128)
 	if strings.TrimSpace(line2) != "" {
 		activity["state"] = limit(line2, 128)

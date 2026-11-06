@@ -47,7 +47,7 @@ namespace Nowcast
                 request.Headers.TryAddWithoutValidation("User-Agent", "discord-nowcast/" + Program.Version);
                 if (slot != null)
                 {
-                    request.Headers.TryAddWithoutValidation("X-Nowcast-Installation", StatusReporter.Installation());
+                    request.Headers.TryAddWithoutValidation("X-Nowcast-Installation", PictureInstallation.Installation());
                     request.Headers.TryAddWithoutValidation("X-Nowcast-Slot", slot);
                 }
                 if (query == "?kind=own")

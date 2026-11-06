@@ -28,7 +28,7 @@ func t(ruText, enText string) string {
 var text = struct {
 	AlreadyRunning, NothingPlaying, DiscordOff, DiscordDenied, HiddenUntil, MediaUnavailable, OwnShown, Starting      string
 	HideHour, ShowAgain, OwnToggle, Autostart, OpenConfig, OpenLog, Diagnostics, UpdateAvailable, DiscordServer, Exit string
-	Paused, ListenOn, WatchOn, FindOnYouTube, Music                                                                   string
+	Paused, ListenOn, WatchOn, FindOnYouTube, GetNowcast, Music                                                       string
 }{
 	AlreadyRunning:   t("discord-nowcast уже работает.", "discord-nowcast is already running."),
 	NothingPlaying:   t("Ничего не играет", "Nothing is playing"),
@@ -53,6 +53,7 @@ var text = struct {
 	Paused:        t("пауза", "paused"),
 	ListenOn:      t("Слушать на %s", "Listen on %s"),
 	WatchOn:       t("Смотреть на %s", "Watch on %s"),
+	GetNowcast:    t("Получить Nowcast", "Get Nowcast"),
 	FindOnYouTube: t("Найти на YouTube", "Find on YouTube"),
 	Music:         t("Музыка", "Music"),
 }

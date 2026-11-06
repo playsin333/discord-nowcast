@@ -53,7 +53,6 @@ namespace Nowcast
             Run("lyrics", LyricsLines);
             Run("lyrics looked up again after an error", LyricsRetry);
             Run("VPS picture lifetimes and moderation rejection", HostFallback);
-            Run("custom status reports, renews and retries", StatusReports);
             Run("tracked picture carries installation and slot", TrackedPicture);
             Run("own status", OwnStatus);
             Run("own status settings", OwnSettings);
@@ -112,7 +111,7 @@ namespace Nowcast
             Check(firefox.Name == "Firefox" && firefox.IsBrowser, "Firefox by its folder hash");
             Check(Sources.Resolve("F0DC299D809B9700", settings).Name == "Firefox", "Firefox elsewhere");
             Check(Sources.Resolve("Chrome", settings).IsBrowser, "Chrome is a browser");
-            Check(Sources.Resolve("AIMP.exe", settings).ClientId == "1563516800287907893", "AIMP has its application");
+            Check(Sources.Resolve("AIMP.exe", settings).ClientId == null, "AIMP uses the general application");
             Check(Sources.Resolve("vlc.exe", settings).ClientId == null, "VLC uses the general one");
         }
 
@@ -688,11 +687,11 @@ namespace Nowcast
         {
             var saved = Hosts.UploadHttp;
             var savedNick = Discord.UploadNick;
-            var path = StatusReporter.IdentityPath;
+            var path = PictureInstallation.IdentityPath;
             var folder = Path.Combine(Path.GetTempPath(), "nowcast-tracked-" + Guid.NewGuid().ToString("N"));
             try
             {
-                StatusReporter.IdentityPath = Path.Combine(folder, "installation");
+                PictureInstallation.IdentityPath = Path.Combine(folder, "installation");
                 var fake = new FakeHostHandler { PrimaryStatus = 200 };
                 Hosts.UploadHttp = new System.Net.Http.HttpClient(fake);
                 Discord.UploadNick = "  Тест 😀 / &?#  ";
@@ -707,13 +706,13 @@ namespace Nowcast
                 Hosts.UploadOwn(new byte[] { 0x89, 0x50 }, "status");
                 Check(fake.Nick == "other-user", "new request uses the current account nickname");
                 Check(fake.Requests.Count == 4 && fake.Requests.All(r => r == Hosts.Reserve), "tracked metadata reaches VPS directly");
-                Check(fake.Slot == "status" && fake.Installation == StatusReporter.Installation(), "same persistent token on picture and status");
+                Check(fake.Slot == "status" && fake.Installation == PictureInstallation.Installation(), "same persistent token on picture and status");
             }
             finally
             {
                 Hosts.UploadHttp.Dispose(); Hosts.UploadHttp = saved;
                 Discord.UploadNick = savedNick;
-                StatusReporter.IdentityPath = path;
+                PictureInstallation.IdentityPath = path;
                 if (Directory.Exists(folder)) Directory.Delete(folder, true);
             }
         }
@@ -753,53 +752,6 @@ namespace Nowcast
         }
 
         // "Listening to nowcast": two lines, the time from the start, the picture, the server on a click.
-        static void StatusReports()
-        {
-            var identityPath = StatusReporter.IdentityPath;
-            var identityFolder = Path.Combine(Path.GetTempPath(), "nowcast-identity-" + Guid.NewGuid().ToString("N"));
-            StatusReporter.IdentityPath = Path.Combine(identityFolder, "installation");
-            var originalSend = StatusReporter.Send;
-            var originalNow = StatusReporter.Now;
-            var now = DateTime.UtcNow;
-            var bodies = new List<string>();
-            Action wait = delegate {
-                var busy = typeof(StatusReporter).GetField("busy", BindingFlags.NonPublic | BindingFlags.Static);
-                for (var i = 0; i < 1000 && (bool)busy.GetValue(null); i++) Thread.Sleep(5);
-                Check(!(bool)busy.GetValue(null), "report completed");
-            };
-            try
-            {
-                StatusReporter.Now = delegate { return now; };
-                StatusReporter.Send = delegate(string body) { bodies.Add(body); };
-                StatusReporter.Report("Привет", "Вторая строка", "listening", null); wait();
-                Check(bodies.Count == 1 && bodies[0].Contains("Привет"), "text without picture sent");
-                var payload = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string,string>>(bodies[0]);
-                Check(payload["client"].Length == 64 && payload["client"] == StatusReporter.Installation(), "installation persists across reports and reads");
-                StatusReporter.Report("Привет", "Вторая строка", "listening", null); wait();
-                Check(bodies.Count == 1, "unchanged text is not sent every tick");
-                now = now.AddHours(1);
-                StatusReporter.Report("Привет", "Вторая строка", "listening", null); wait();
-                Check(bodies.Count == 2, "active status renewed");
-                var pic = new string('a', 40) + ".png";
-                StatusReporter.Report("Привет", "Вторая строка", "listening", Hosts.Own + "/" + pic); wait();
-                Check(bodies.Count == 3 && bodies[2].Contains(pic), "late picture attaches to text");
-                StatusReporter.Send = delegate(string body) { throw new InvalidOperationException("offline"); };
-                StatusReporter.Report("Changed", "", "playing", null); wait();
-                StatusReporter.Send = delegate(string body) { bodies.Add(body); };
-                StatusReporter.Report("Changed", "", "playing", null); wait();
-                Check(bodies.Count == 3, "failure backs off");
-                now = now.AddMinutes(1);
-                StatusReporter.Report("Changed", "", "playing", null); wait();
-                Check(bodies.Count == 4, "failed report retried");
-            }
-            finally
-            {
-                StatusReporter.Send = originalSend; StatusReporter.Now = originalNow;
-                StatusReporter.IdentityPath = identityPath;
-                if (Directory.Exists(identityFolder)) Directory.Delete(identityFolder, true);
-            }
-        }
-
         static void OwnStatus()
         {
             var activity = Activity.Own("listening", "Делаю бит", "в FL Studio", 1000, "https://host/own");
@@ -812,7 +764,9 @@ namespace Nowcast
             var assets = Assets(activity);
             Check((string)assets["large_image"] == "https://host/own", "the picture");
             Check((string)assets["large_url"] == Program.DiscordInvite && (string)activity["details_url"] == Program.DiscordInvite, "a click opens the server");
-            Check(!activity.ContainsKey("buttons"), "no button");
+            Check((string)((Dictionary<string, object>[])activity["buttons"])[0]["url"] == Program.DiscordInvite, "Get Nowcast button opens the server");
+            Check((string)((Dictionary<string, object>[])activity["buttons"])[0]["label"] == Text.GetNowcast, "Get Nowcast label");
+            Check(Activity.Own("listening", "Ok", "", 1000, null).ContainsKey("buttons"), "button without a picture");
             Check(!Activity.Own("listening", "Ok", "", 1000, null).ContainsKey("assets"), "no picture, no assets");
         }
 
@@ -828,6 +782,8 @@ namespace Nowcast
             apply.Invoke(settings, new object[] { new Dictionary<string, object> { { "own", true }, { "ownTitle", " " }, { "ownMinutes", 999999 } } });
             Check(settings.Own && !settings.ShowsOwn, "no title, nothing shown");
             Check(settings.OwnMinutes == 100 * 60, "at most 100 hours: " + settings.OwnMinutes);
+            apply.Invoke(settings, new object[] { new Dictionary<string, object> { { "clientId", "1562901782579912804" } } });
+            Check(settings.ClientId == Settings.DefaultClientId, "old default migrates");
             settings.OwnTitle = "Бит";
             Check(settings.ShowsOwn, "shown with a title");
             Check(settings.OwnClientIdFor() == Settings.OwnClientId, "nowcast's application");
@@ -836,7 +792,7 @@ namespace Nowcast
             foreach (var bad in new[] { "заходи на casino-x.com", "t.me/bonus", "bonus . com", "www.site", "https://x", "Лучшее КАЗИНО", "1xbet бонус", "Промокод 777", "porn", "18+ видео", "сайт.рф" })
             {
                 settings.OwnTitle = bad;
-                Check(!settings.ShowsOwn, "not shown: " + bad);
+                Check(settings.ShowsOwn, "unfiltered title: " + bad);
             }
             foreach (var good in new[] { "Делаю бит", "Слушаю Dean Martin", "v1.2 вышла", "т.е. всё", "Ст. Петербург", "Mr. Smith", "ft.Drake", "feat. Rihanna" })
             {
@@ -845,7 +801,7 @@ namespace Nowcast
             }
             settings.OwnTitle = "Ок";
             settings.OwnLine2 = "ставки тут";
-            Check(!settings.ShowsOwn, "the second line too");
+            Check(settings.ShowsOwn, "unfiltered second line");
         }
 
         static void OwnPicture()

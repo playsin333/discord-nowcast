@@ -76,19 +76,17 @@ func TestOwnSettings(t *testing.T) {
 	if s.OwnClientIDFor() != "123" {
 		t.Fatal("one's own application wins")
 	}
-	for _, bad := range []string{"заходи на casino-x.com", "t.me/bonus", "bonus . com", "www.site", "https://x", "Лучшее КАЗИНО", "1xbet бонус", "Промокод 777", "porn", "18+ видео", "сайт.рф"} {
-		if isClean(bad) {
-			t.Errorf("not shown: %s", bad)
+	for _, title := range []string{"Sex Pistols", "https://example.com", "casino", "18+ видео"} {
+		s.OwnTitle, s.OwnLine2 = title, "https://example.org"
+		if !s.ShowsOwn() {
+			t.Errorf("unfiltered text: %s", title)
 		}
 	}
-	for _, good := range []string{"Делаю бит", "Слушаю Dean Martin", "v1.2 вышла", "т.е. всё", "Ст. Петербург", "Mr. Smith", "ft.Drake", "feat. Rihanna"} {
-		if !isClean(good) {
-			t.Errorf("shown: %s", good)
-		}
+	if err := s.apply([]byte(`{"clientId":"1562901782579912804"}`)); err != nil || s.ClientID != defaultClientID {
+		t.Fatal("old default migrates to the new shared application")
 	}
-	s.OwnTitle, s.OwnLine2 = "Ок", "ставки тут"
-	if s.ShowsOwn() {
-		t.Error("the second line too")
+	if err := s.apply([]byte(`{"clientId":"123"}`)); err != nil || s.ClientID != "123" {
+		t.Fatal("custom application is preserved")
 	}
 	home, _ := os.UserHomeDir()
 	s.OwnPicture = "~/pic.png"
@@ -106,12 +104,12 @@ func TestSources(t *testing.T) {
 			t.Errorf("%+v: %+v", id, got)
 		}
 	}
-	check(PlayerID{Bus: "spotify", Identity: "Spotify"}, "Spotify", "1563159215709749389", false)
+	check(PlayerID{Bus: "spotify", Identity: "Spotify"}, "Spotify", "1568314291021549699", false)
 	check(PlayerID{Bus: "firefox.instance_1_42", DesktopEntry: "firefox", Identity: "Mozilla Firefox"}, "Firefox", "", true)
 	check(PlayerID{Bus: "chromium.instance4242", DesktopEntry: "google-chrome", Identity: "Google Chrome"}, "Chrome", "", true)
 	check(PlayerID{Bus: "chromium.instance4242", DesktopEntry: "chromium", Identity: "Chromium"}, "Chromium", "", true)
-	check(PlayerID{Bus: "telegram", DesktopEntry: "org.telegram.desktop", Identity: "Telegram Desktop"}, "Telegram", "1563159812382920706", false)
-	check(PlayerID{Bus: "yandex-music", Identity: "Yandex Music"}, "Yandex Music", "1563159088265822392", false)
+	check(PlayerID{Bus: "telegram", DesktopEntry: "org.telegram.desktop", Identity: "Telegram Desktop"}, "Telegram", "1568314861254086716", false)
+	check(PlayerID{Bus: "yandex-music", Identity: "Yandex Music"}, "Yandex Music", "1568314129486315666", false)
 	check(PlayerID{Bus: "vlc", Identity: "VLC media player"}, "VLC", "", false)
 	check(PlayerID{Bus: "rhythmbox", Identity: "Rhythmbox"}, "Rhythmbox", "", false)
 	check(PlayerID{Bus: "org.gnome.Lollypop"}, "Lollypop", "", false)
@@ -257,8 +255,8 @@ func TestOwnActivity(t *testing.T) {
 	if a["timestamps"].(object)["start"] != int64(1000) {
 		t.Error("the start")
 	}
-	if _, ok := a["buttons"]; ok {
-		t.Error("no button")
+	if a["buttons"].([]object)[0]["url"] != discordInvite || a["buttons"].([]object)[0]["label"] != text.GetNowcast {
+		t.Error("Get Nowcast button opens the server")
 	}
 }
 

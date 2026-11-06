@@ -18,7 +18,6 @@ namespace Nowcast
         readonly ComboBox type = SettingsForm.Choices();
         readonly TextBox title = Line();
         readonly TextBox line2 = Line();
-        readonly Label unclean = new Label { Text = Strings.OwnUnclean, AutoSize = true, MaximumSize = new Size(330, 0), ForeColor = Color.FromArgb(0xF2, 0x3F, 0x43), Visible = false };
         readonly PicturePicker picture = new PicturePicker(Settings.OwnPicturePath, "Own picture");
         readonly NumericUpDown hours = Number(Settings.MaxOwnMinutes / 60);
         readonly NumericUpDown minutes = Number(59);
@@ -55,8 +54,6 @@ namespace Nowcast
             layout.Controls.Add(title);
             layout.Controls.Add(Caption(Strings.OwnLine2Label));
             layout.Controls.Add(line2);
-            layout.Controls.Add(unclean);
-            layout.Controls.Add(SettingsForm.Note(Strings.OwnModeration));
 
             layout.Controls.Add(Caption(Strings.OwnPictureLabel));
             layout.Controls.Add(picture);
@@ -99,7 +96,6 @@ namespace Nowcast
             type.SelectedIndex = index >= 0 ? index : 0;
             title.Text = settings.OwnTitle;
             line2.Text = settings.OwnLine2;
-            unclean.Visible = !Settings.IsClean(title.Text) || !Settings.IsClean(line2.Text);
             hours.Value = settings.OwnMinutes / 60;
             minutes.Value = settings.OwnMinutes % 60;
             picture.ShowPicture();
@@ -108,7 +104,6 @@ namespace Nowcast
 
         void Later()
         {
-            unclean.Visible = !Settings.IsClean(title.Text) || !Settings.IsClean(line2.Text);
             if (isLoading) return;
             typing.Stop();
             typing.Start();

@@ -314,7 +314,6 @@ namespace Nowcast
                 ownStart = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - settings.OwnMinutes * 60000L;
             }
             var image = Covers.FindFile(Settings.OwnPicturePath);
-            StatusReporter.Report(title, settings.OwnLine2, settings.OwnType, image);
             var isResend = resendAt.HasValue && DateTime.Now >= resendAt.Value;
             var changed = key != sentKey || image != sentImage || isResend;
             if (!changed || (DateTime.Now - sentAt).TotalSeconds < 4) return;

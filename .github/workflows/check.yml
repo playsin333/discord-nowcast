@@ -52,7 +52,7 @@ jobs:
         run: |
           gh release delete dev --cleanup-tag --yes || true
           gh release create dev discord-nowcast.exe server/vps/app.py --prerelease --target "$GITHUB_SHA" --title "Тестовая сборка" \
-            --notes "Dev 1.5.6: обложки и свои картинки загружаются напрямую в VPS, без Cloudflare и ожидания переключения. Сроки хранения и модерация сохранены. Для этого изменения обновлять или перезапускать VPS не требуется. Сборка ${GITHUB_SHA::7}, не публичный релиз."
+            --notes "Dev 1.6.0: свободный текст статуса, новые приложения Discord, Получить Nowcast и добровольная поддержка. Сохранены изменения 1.5.7. Сборка ${GITHUB_SHA::7}."
 
   linux:
     runs-on: ubuntu-latest

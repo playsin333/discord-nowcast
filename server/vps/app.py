@@ -55,11 +55,6 @@ def setup():
         CREATE TABLE IF NOT EXISTS uploads (ip TEXT, at INTEGER);
         CREATE INDEX IF NOT EXISTS uploads_ip_at ON uploads(ip, at);
         CREATE INDEX IF NOT EXISTS pictures_added ON pictures(added);
-        CREATE TABLE IF NOT EXISTS statuses (
-          id TEXT PRIMARY KEY, ip TEXT NOT NULL, title TEXT NOT NULL,
-          line2 TEXT NOT NULL, type TEXT NOT NULL, picture TEXT NOT NULL, added INTEGER NOT NULL);
-        CREATE INDEX IF NOT EXISTS statuses_added ON statuses(added);
-        CREATE TABLE IF NOT EXISTS blocked_statuses (id TEXT PRIMARY KEY);
         CREATE TABLE IF NOT EXISTS picture_slots (
           client TEXT NOT NULL, slot TEXT NOT NULL, picture TEXT NOT NULL, at INTEGER NOT NULL,
           PRIMARY KEY(client,slot));
@@ -68,10 +63,9 @@ def setup():
         CREATE TABLE IF NOT EXISTS blocked (id TEXT PRIMARY KEY);
         CREATE TABLE IF NOT EXISTS banned (ip TEXT PRIMARY KEY);
         ''')
-        columns = {row['name'] for row in db.execute('PRAGMA table_info(statuses)')}
-        if 'client' not in columns:
-            db.execute("ALTER TABLE statuses ADD COLUMN client TEXT NOT NULL DEFAULT ''")
-        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS statuses_client ON statuses(client) WHERE client<>''")
+        # Text moderation is retired; purge historical text on upgrade.
+        db.execute('DROP TABLE IF EXISTS statuses')
+        db.execute('DROP TABLE IF EXISTS blocked_statuses')
         if protect_existing:
             db.execute('INSERT OR IGNORE INTO protected_pictures SELECT id FROM pictures')
         db.execute('DELETE FROM uploaders WHERE id NOT IN (SELECT id FROM pictures)')
@@ -83,7 +77,6 @@ def cleanup():
         db.execute("DELETE FROM pictures WHERE (kind='own' AND added<=?) OR (kind='cover' AND added<=?)",
                    (now-KEEP,now-COVER_KEEP))
         db.execute('DELETE FROM uploaders WHERE id NOT IN (SELECT id FROM pictures)')
-        db.execute('DELETE FROM statuses WHERE added<=?', (now-KEEP,))
         db.execute('DELETE FROM picture_slots WHERE at<=?', (now-KEEP,))
         db.execute('DELETE FROM protected_pictures WHERE id NOT IN (SELECT id FROM pictures)')
         db.execute('DELETE FROM uploads WHERE at < ?', (int(time.time()) - 3600,))
@@ -104,8 +97,6 @@ def discard_picture(db, picture):
     if not pic or db.execute('SELECT 1 FROM protected_pictures WHERE id=?',(pic,)).fetchone():
         return
     if db.execute('SELECT 1 FROM picture_slots WHERE picture=?',(picture,)).fetchone():
-        return
-    if db.execute('SELECT 1 FROM statuses WHERE picture=?',(picture,)).fetchone():
         return
     db.execute("DELETE FROM pictures WHERE id=? AND kind='own'",(pic,))
     db.execute('DELETE FROM uploaders WHERE id=? AND NOT EXISTS (SELECT 1 FROM pictures WHERE id=?)',(pic,pic))
@@ -169,61 +160,6 @@ def store(body, ip, kind='cover', source='vps', token='', slot=''):
             db.execute('INSERT OR IGNORE INTO protected_pictures VALUES (?)',(pic,))
         db.execute('INSERT INTO uploads VALUES (?,?)', (address,now))
     return 200, ORIGIN + '/' + pic + '.' + ext
-
-
-def store_status(body, ip):
-    try:
-        data = json.loads(body)
-        if not isinstance(data, dict):
-            raise ValueError()
-        title, line2, kind, picture = (data.get(k, '') for k in ('title', 'line2', 'type', 'picture'))
-        if not all(isinstance(v, str) for v in (title, line2, kind, picture)):
-            raise ValueError()
-        client = installation(data.get('client',''))
-        title, line2 = title.strip(), line2.strip()
-        if not title or len(title)>128 or len(line2)>128 or kind not in ('listening','watching','playing'):
-            raise ValueError()
-        # Store only a picture id; arbitrary external URLs are never rendered.
-        if picture and not re.fullmatch(r'[a-f0-9]{40}\.(jpg|png)', picture):
-            raise ValueError()
-    except (ValueError, UnicodeError):
-        return 400, 'Invalid status'
-    address = hmac.new(IP_SALT.encode(), ip.encode(), hashlib.sha256).hexdigest()
-    identity = json.dumps([client or address,title,line2,kind,picture],ensure_ascii=True)
-    status_id = hashlib.sha256(identity.encode()).hexdigest()
-    now = int(time.time())
-    with connect() as db:
-        db.execute('BEGIN IMMEDIATE')
-        if db.execute('SELECT 1 FROM banned WHERE ip=?',(address,)).fetchone():
-            return 403, 'Banned'
-        if db.execute('SELECT 1 FROM blocked_statuses WHERE id=?',(status_id,)).fetchone():
-            return 451, 'Blocked'
-        if picture:
-            pic = picture.split('.')[0]
-            if db.execute('SELECT 1 FROM blocked WHERE id=?',(pic,)).fetchone():
-                return 451, 'Blocked'
-            # Same picture alone is not proof of ownership of another user's upload.
-            owned = db.execute('SELECT 1 FROM picture_slots WHERE client=? AND slot=? AND picture=?',(client,'status',picture)).fetchone() if client else db.execute('SELECT 1 FROM uploaders WHERE id=? AND ip=?',(pic,address)).fetchone()
-            if not owned:
-                return 400, 'Upload picture first'
-        count = db.execute('SELECT COUNT(*) FROM uploads WHERE ip=? AND at>?',(address,now-3600)).fetchone()[0]
-        if count>=120:
-            return 429, 'Too many updates, try again later'
-        previous = db.execute("SELECT picture FROM statuses WHERE client=? AND client<>''",(client,)).fetchone()
-        if client:
-            db.execute('DELETE FROM statuses WHERE client=?',(client,))
-        db.execute('INSERT INTO statuses (id,ip,title,line2,type,picture,added,client) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET added=excluded.added,ip=excluded.ip',
-                   (status_id,address,title,line2,kind,picture,now,client))
-        if client:
-            previous_slot = db.execute("SELECT picture FROM picture_slots WHERE client=? AND slot='status'",(client,)).fetchone()
-            if not picture:
-                db.execute("DELETE FROM picture_slots WHERE client=? AND slot='status'",(client,))
-            if previous_slot and previous_slot['picture'] != picture:
-                discard_picture(db,previous_slot['picture'])
-            if previous and previous['picture'] != picture:
-                discard_picture(db,previous['picture'])
-        db.execute('INSERT INTO uploads VALUES (?,?)',(address,now))
-    return 200, 'ok'
 
 
 STYLE = '''<style>
@@ -329,12 +265,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         url = urlsplit(self.path)
         if url.path == '/status':
-            body = self.read(4096)
-            if body is None:
-                return self.send(413,'Too large')
-            ip = self.headers.get('X-Real-IP',self.client_address[0])
-            status,answer = store_status(body,ip)
-            return self.send(status,answer)
+            # Legacy clients may still submit text. Do not read or store it.
+            return self.send(410,'Text submissions are no longer accepted')
         if url.path in ('/upload','/bridge/upload'):
             if url.path.startswith('/bridge') and not self.bridge():
                 return self.send(404,'Not found')
@@ -373,22 +305,6 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403,'Invalid form')
         if url.path == '/logout':
             return self.send(303,'',headers={'Location':'/admin','Set-Cookie':'nowcast_admin=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'})
-        status_id = form.get('status_id',[''])[0]
-        if status_id:
-            action = form.get('action',['delete'])[0]
-            if not re.fullmatch('[a-f0-9]{64}',status_id) or action not in ('delete','ban'):
-                return self.send(400,'Invalid action')
-            with connect() as db:
-                db.execute('BEGIN IMMEDIATE')
-                if action == 'ban':
-                    db.execute('INSERT OR IGNORE INTO banned SELECT ip FROM statuses WHERE id=?',(status_id,))
-                db.execute('INSERT OR IGNORE INTO blocked_statuses VALUES (?)',(status_id,))
-                previous = db.execute('SELECT client,picture FROM statuses WHERE id=?',(status_id,)).fetchone()
-                db.execute('DELETE FROM statuses WHERE id=?',(status_id,))
-                if previous and previous['client']:
-                    db.execute("DELETE FROM picture_slots WHERE client=? AND slot='status' AND picture=?",(previous['client'],previous['picture']))
-                    discard_picture(db,previous['picture'])
-            return self.send(303,'',headers={'Location':'/admin?done='+action})
         pic = form.get('id',[''])[0].strip().split('/')[-1].split('.')[0]
         action = form.get('action',['delete'])[0]
         if not re.fullmatch('[a-f0-9]{40}',pic) or action not in ('delete','ban'):
@@ -399,8 +315,6 @@ class Handler(BaseHTTPRequestHandler):
                 # Ban all recorded uploaders, not whichever last overwrote a row.
                 db.execute('INSERT OR IGNORE INTO banned SELECT ip FROM uploaders WHERE id=?',(pic,))
             db.execute('INSERT OR IGNORE INTO blocked VALUES (?)',(pic,))
-            db.execute('INSERT OR IGNORE INTO blocked_statuses SELECT id FROM statuses WHERE picture LIKE ?',(pic+'.%',))
-            db.execute('DELETE FROM statuses WHERE picture LIKE ?',(pic+'.%',))
             db.execute('DELETE FROM picture_slots WHERE picture LIKE ?',(pic+'.%',))
             db.execute('DELETE FROM pictures WHERE id=?',(pic,))
         return self.send(303,'',headers={'Location':'/admin?done='+action})
@@ -412,11 +326,10 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             page = 0
         kind = 'own'
-        where,params = " WHERE kind=? AND NOT EXISTS (SELECT 1 FROM statuses WHERE statuses.picture=pictures.id||'.'||pictures.type) AND NOT EXISTS (SELECT 1 FROM picture_slots WHERE slot='status' AND picture= pictures.id||'.'||pictures.type)",('own',)
+        where,params = " WHERE kind=?",('own',)
         with connect() as db:
             total = db.execute('SELECT COUNT(*) FROM pictures'+where,params).fetchone()[0]
             rows = db.execute('SELECT id,type,kind,source,added FROM pictures'+where+' ORDER BY added DESC LIMIT 60 OFFSET ?',params+(page*60,)).fetchall()
-            statuses = db.execute('SELECT * FROM statuses ORDER BY added DESC LIMIT 60').fetchall()
             banned = db.execute('SELECT COUNT(*) FROM banned').fetchone()[0]
         csrf = hmac.new(ADMIN_KEY.encode(),self.cookie('nowcast_admin').encode(),hashlib.sha256).hexdigest()
         cards = []
@@ -428,15 +341,6 @@ class Handler(BaseHTTPRequestHandler):
             <small>{label} · {date} МСК<br>{html.escape(r['source'])}</small><form method="post" action="/admin">
             <input type="hidden" name="csrf" value="{csrf}"><input type="hidden" name="id" value="{r['id']}">
             <div class="actions"><button name="action" value="delete">Удалить</button><button class="ban" name="action" value="ban">Бан</button></div></form></article>''')
-        status_cards = []
-        for r in statuses:
-            date = datetime.fromtimestamp(r['added'],ZoneInfo('Europe/Moscow')).strftime('%d.%m %H:%M')
-            image = '<img loading="lazy" src="/'+r['picture']+'" alt="Картинка статуса">' if r['picture'] else '<p>Без картинки</p>'
-            status_cards.append(f'''<article class="card">{image}
-            <div style="text-align:left;overflow-wrap:anywhere;white-space:pre-wrap"><strong>{html.escape(r['title'])}</strong><br>{html.escape(r['line2'])}</div>
-            <small>{html.escape(r['type'])} · {date} МСК</small>
-            <form method="post" action="/admin"><input type="hidden" name="csrf" value="{csrf}"><input type="hidden" name="status_id" value="{r['id']}">
-            <div class="actions"><button name="action" value="delete">Удалить</button><button class="ban" name="action" value="ban">Бан</button></div></form></article>''')
         nav = '<nav><a href="/admin">Обновить</a></nav>'
         pager = (f'<a href="?kind={kind}&page={page-1}">← Назад</a> ' if page else '')
         if (page+1)*60 < total:
@@ -445,8 +349,6 @@ class Handler(BaseHTTPRequestHandler):
         page_html = f'''<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Nowcast — обложки</title>{STYLE}
         <h1>Картинки пользователей</h1><p>Только выбранные вручную картинки · Картинок: {total} · Забаненных адресов: {banned} · Хранение: 6 часов после последней загрузки</p>
         <p>«Удалить» запрещает эту картинку. «Бан» также запрещает её загрузчикам новые загрузки.</p>{message}{nav}
-        <h2>Тексты кастомных статусов</h2><p>Последние 60 записей, хранение 6 часов. Удаление запрещает повторную отправку этой записи; бан блокирует новые отправки с адреса.</p>
-        <div class="grid">{''.join(status_cards) or '<p>Пока нет текстов. Нужна Windows-версия 1.5.4 или новее.</p>'}</div>
         <h2>Выбранные картинки</h2><div class="grid">{''.join(cards) or '<p>Пока нет картинок.</p>'}</div><nav>{pager}</nav>
         <form method="post" action="/logout"><input type="hidden" name="csrf" value="{csrf}"><button>Выйти</button></form></html>'''
         return self.send(200,page_html,'text/html; charset=utf-8')

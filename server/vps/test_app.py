@@ -109,172 +109,80 @@ class StorageTests(unittest.TestCase):
 
 
 
-class StatusTests(unittest.TestCase):
+class PictureOnlyTests(unittest.TestCase):
     setUp = StorageTests.setUp
     tearDown = StorageTests.tearDown
-    def submit(self, ip='1.1.1.1', **fields):
-        import json
-        data = dict(title='Привет <script>alert(1)</script>', line2='Вторая строка', type='listening', picture='')
-        data.update(fields)
-        return app.store_status(json.dumps(data,ensure_ascii=False).encode(),ip)
 
-    def test_same_picture_separate_users_and_texts(self):
-        picture=app.store(self.body,'1.1.1.1','own')[1].rsplit('/',1)[1]
-        app.store(self.body,'2.2.2.2','own')
-        self.assertEqual(self.submit(picture=picture)[0],200)
-        self.assertEqual(self.submit(ip='2.2.2.2',title='Другой текст',picture=picture)[0],200)
-        self.assertEqual(self.submit(picture=picture)[0],200)
-        self.assertEqual(self.submit(ip='3.3.3.3',picture=picture)[0],400)
+    def upload(self, token, color='red', slot='status'):
+        buf = io.BytesIO()
+        Image.new('RGB', (8, 8), color).save(buf, format='PNG')
+        status, url = app.store(buf.getvalue(), '1.1.1.1', 'own', 'vps', token, slot)
+        self.assertEqual(status, 200)
+        return url.rsplit('/', 1)[1]
+
+    def test_text_endpoint_does_not_read_or_store_body(self):
+        handler = object.__new__(app.Handler)
+        handler.path = '/status'
+        handler.read = lambda maximum: self.fail('text body must not be read')
+        handler.send = lambda status, body: status
+        self.assertEqual(handler.do_POST(), 410)
         with app.connect() as db:
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM statuses').fetchone()[0],2)
-        handler=object.__new__(app.Handler)
-        handler.cookie=lambda name:'test-session'
-        handler.send=lambda status,body,mime:body
-        page=handler.admin({})
-        self.assertIn('Другой текст',page)
-        self.assertIn('&lt;script&gt;',page)
-        self.assertNotIn('<script>alert(1)</script>',page)
+            self.assertIsNone(db.execute("SELECT 1 FROM sqlite_master WHERE name='statuses'").fetchone())
 
-    def test_status_without_picture_expiry_validation(self):
-        self.assertEqual(self.submit()[0],200)
-        self.assertEqual(self.submit(title='')[0],400)
-        self.assertEqual(self.submit(title='x'*129)[0],400)
-        self.assertEqual(self.submit(picture='https://evil.invalid/image.png')[0],400)
-        self.assertEqual(self.submit(type='bad')[0],400)
-        self.assertEqual(app.store_status(b'[]','1.1.1.1')[0],400)
-        with patch('app.time.time',return_value=time.time()+app.KEEP+1):
-            app.cleanup()
+    def test_tracked_status_picture_visible_and_replaceable(self):
+        first = self.upload('a' * 64)
+        handler = object.__new__(app.Handler)
+        handler.cookie = lambda name: 'session'
+        handler.send = lambda status, body, mime: body
+        page = handler.admin({})
+        self.assertIn('src="/' + first + '"', page)
+        self.assertNotIn('Тексты кастомных статусов', page)
+        second = self.upload('a' * 64, 'blue')
         with app.connect() as db:
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM statuses').fetchone()[0],0)
+            self.assertIsNone(db.execute('SELECT 1 FROM pictures WHERE id=?', (first.split('.')[0],)).fetchone())
+            self.assertIsNotNone(db.execute('SELECT 1 FROM pictures WHERE id=?', (second.split('.')[0],)).fetchone())
 
-    def test_status_delete_and_ban_http_forms(self):
-        import hmac,hashlib
+    def test_shared_picture_survives_replacement(self):
+        shared = self.upload('a' * 64)
+        self.upload('b' * 64)
+        self.upload('a' * 64, 'blue')
+        with app.connect() as db:
+            self.assertIsNotNone(db.execute('SELECT 1 FROM pictures WHERE id=?', (shared.split('.')[0],)).fetchone())
+        self.assertEqual(app.store(self.body, '1.1.1.1', 'own', 'vps', 'a'*64, 'bad')[0], 400)
+
+    def test_picture_delete_and_ban_forms(self):
+        import hmac, hashlib
         from urllib.parse import urlencode
-        self.assertEqual(self.submit()[0],200)
-        with app.connect() as db:
-            status_id=db.execute('SELECT id FROM statuses').fetchone()[0]
-        handler=object.__new__(app.Handler)
-        handler.path='/admin'
-        handler.cookie=lambda name:'test-session'
-        handler.authenticated=lambda:True
-        handler.send=lambda status,body,**kwargs:status
-        csrf=hmac.new(app.ADMIN_KEY.encode(),b'test-session',hashlib.sha256).hexdigest()
-        form=dict(status_id=status_id,action='delete',csrf='wrong')
-        handler.read=lambda maximum:urlencode(form).encode()
-        self.assertEqual(handler.do_POST(),403)
-        form['csrf']=csrf
-        self.assertEqual(handler.do_POST(),303)
-        self.assertEqual(self.submit()[0],451)
-        self.assertEqual(self.submit(title='Новый статус')[0],200)
-        with app.connect() as db:
-            form['status_id']=db.execute('SELECT id FROM statuses').fetchone()[0]
-        form['action']='ban'
-        self.assertEqual(handler.do_POST(),303)
-        self.assertEqual(self.submit(title='Ещё статус')[0],403)
-        self.assertEqual(app.store(self.body,'1.1.1.1','own')[0],403)
+        picture = self.upload('a' * 64).split('.')[0]
+        handler = object.__new__(app.Handler)
+        handler.path = '/admin'
+        handler.cookie = lambda name: 'session'
+        handler.authenticated = lambda: True
+        handler.send = lambda status, body, **kwargs: status
+        csrf = hmac.new(app.ADMIN_KEY.encode(), b'session', hashlib.sha256).hexdigest()
+        form = dict(id=picture, action='ban', csrf='bad')
+        handler.read = lambda maximum: urlencode(form).encode()
+        self.assertEqual(handler.do_POST(), 403)
+        form['csrf'] = csrf
+        self.assertEqual(handler.do_POST(), 303)
+        self.assertEqual(app.store(self.body, '1.1.1.1', 'own')[0], 403)
+        self.assertEqual(app.store(self.body, '2.2.2.2', 'own')[0], 451)
 
-class ReplacementTests(unittest.TestCase):
-    setUp = StorageTests.setUp
-    tearDown = StorageTests.tearDown
-    def upload(self, token, color='red', ip='1.1.1.1', slot='status'):
-        buf=io.BytesIO()
-        Image.new('RGB',(8,8),color).save(buf,format='PNG')
-        status,url=app.store(buf.getvalue(),ip,'own','vps',token,slot)
-        self.assertEqual(status,200)
-        return url.rsplit('/',1)[1]
-
-    def report(self, token, picture='', title='Track', ip='1.1.1.1'):
-        import json
-        return app.store_status(json.dumps(dict(client=token,title=title,line2='Line',type='listening',picture=picture)).encode(),ip)[0]
-
-    def test_http_upload_forwards_installation_and_slot(self):
-        handler=object.__new__(app.Handler)
-        handler.path='/upload?kind=own'
-        handler.headers={'X-Real-IP':'1.1.1.1','X-Nowcast-Installation':'a'*64,'X-Nowcast-Slot':'status'}
-        handler.client_address=('127.0.0.1',1234)
-        handler.read=lambda maximum:self.body
-        handler.send=lambda status,body:(status,body)
-        status,url=handler.do_POST()
-        self.assertEqual(status,200)
-        self.assertEqual(self.report('a'*64,url.rsplit('/',1)[1]),200)
-        self.assertEqual(self.report('b'*64,url.rsplit('/',1)[1]),400)
-
-    def test_text_replaces_and_ip_is_not_identity(self):
-        token='a'*64
-        self.assertEqual(self.report(token,title='First'),200)
-        self.assertEqual(self.report(token,title='First!'),200)
-        self.assertEqual(self.report(token,title='Latest',ip='2.2.2.2'),200)
-        self.assertEqual(self.report('b'*64,title='Other',ip='2.2.2.2'),200)
+    def test_upgrade_purges_text_preserves_pictures_and_bans(self):
+        _, url = app.store(self.body, '1.1.1.1', 'own')
         with app.connect() as db:
-            rows=db.execute('SELECT title FROM statuses ORDER BY title').fetchall()
-            self.assertEqual([r['title'] for r in rows],['Latest','Other'])
-
-    def test_unique_picture_replaced_and_not_duplicated_in_gallery(self):
-        token='a'*64
-        first=self.upload(token)
-        self.assertEqual(self.report(token,first),200)
-        second=self.upload(token,'blue')
-        # Keep the old image until the new status has actually arrived.
-        with app.connect() as db:
-            self.assertIsNotNone(db.execute('SELECT 1 FROM pictures WHERE id=?',(first.split('.')[0],)).fetchone())
-        self.assertEqual(self.report(token,second,title='New'),200)
-        with app.connect() as db:
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM statuses').fetchone()[0],1)
-            self.assertIsNone(db.execute('SELECT 1 FROM pictures WHERE id=?',(first.split('.')[0],)).fetchone())
-            self.assertIsNotNone(db.execute('SELECT 1 FROM pictures WHERE id=?',(second.split('.')[0],)).fetchone())
-        handler=object.__new__(app.Handler)
-        handler.cookie=lambda name:'session'
-        handler.send=lambda status,body,mime:body
-        page=handler.admin({})
-        self.assertEqual(page.count('src="/'+second+'"'),1)
-        self.assertNotIn(first,page)
-        self.assertEqual(self.report(token,title='No picture'),200)
-        with app.connect() as db:
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM pictures').fetchone()[0],0)
-
-    def test_shared_picture_and_other_slot_preserved(self):
-        a,b='a'*64,'b'*64
-        shared=self.upload(a)
-        self.upload(b)
-        self.report(a,shared)
-        self.report(b,shared)
-        newer=self.upload(a,'blue')
-        self.report(a,newer,title='A changed')
-        with app.connect() as db:
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM pictures').fetchone()[0],2)
-        self.report(b,title='B no picture')
-        with app.connect() as db:
-            self.assertIsNone(db.execute('SELECT 1 FROM pictures WHERE id=?',(shared.split('.')[0],)).fetchone())
-        self.upload(a,'blue',slot='fallback')
-        self.report(a,title='A no picture')
-        with app.connect() as db:
-            self.assertIsNotNone(db.execute('SELECT 1 FROM pictures WHERE id=?',(newer.split('.')[0],)).fetchone())
-
-    def test_legacy_and_player_references_are_protected(self):
-        token='a'*64
-        picture=self.upload(token)
-        self.report(token,picture)
-        app.store(self.body,'9.9.9.9','cover')
-        self.report(token,title='Changed')
-        with app.connect() as db:
-            self.assertIsNotNone(db.execute('SELECT 1 FROM pictures WHERE id=?',(picture.split('.')[0],)).fetchone())
-        self.assertEqual(self.report('malformed'),400)
-        self.assertEqual(app.store(self.body,'1.1.1.1','own','vps',token,'bad')[0],400)
-
-    def test_migration_is_additive_and_protects_existing_files(self):
-        # Start from the 1.5.4 schema, with a picture and a legacy text.
-        with app.connect() as db:
-            db.execute('DROP INDEX statuses_client')
-            db.execute('DROP TABLE statuses')
-            db.execute('CREATE TABLE statuses (id TEXT PRIMARY KEY,ip TEXT,title TEXT,line2 TEXT,type TEXT,picture TEXT,added INTEGER)')
-            db.execute('INSERT INTO statuses VALUES (?,?,?,?,?,?,?)',('old','ip','Old','','listening','',int(time.time())))
-            db.execute('DROP TABLE protected_pictures')
-            db.execute('INSERT INTO pictures VALUES (?,?,?,?,?,?)',('a'*40,'png',self.body,int(time.time()),'own','vps'))
+            db.execute('CREATE TABLE statuses (title TEXT)')
+            db.execute("INSERT INTO statuses VALUES ('private text')")
+            db.execute('CREATE TABLE blocked_statuses (id TEXT)')
+            db.execute("INSERT INTO banned VALUES ('existing-ban')")
+            db.execute("INSERT INTO blocked VALUES ('existing-block')")
         app.setup()
         app.setup()
         with app.connect() as db:
-            self.assertEqual(db.execute('SELECT title FROM statuses').fetchone()[0],'Old')
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM protected_pictures').fetchone()[0],1)
+            self.assertIsNone(db.execute("SELECT 1 FROM sqlite_master WHERE name IN ('statuses','blocked_statuses')").fetchone())
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM pictures').fetchone()[0], 1)
+            self.assertEqual(db.execute('SELECT ip FROM banned').fetchone()[0], 'existing-ban')
+            self.assertEqual(db.execute('SELECT id FROM blocked').fetchone()[0], 'existing-block')
 
 
 if __name__ == '__main__':

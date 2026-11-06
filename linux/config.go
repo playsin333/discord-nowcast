@@ -5,15 +5,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
 const (
 	// The general Discord application, for players without one of their own.
-	defaultClientID = "1562901782579912804"
+	defaultClientID = "1568313886258757733"
 	// The application of one's own status: "Listening to nowcast".
-	ownClientID = "1565004020647727184"
+	ownClientID = "1568313886258757733"
 	// How long one's own status may say it has been going: 100 hours.
 	maxOwnMinutes = 100 * 60
 )
@@ -116,6 +115,9 @@ func (s *Settings) apply(data []byte) error {
 	}
 	if v, ok := str("clientId"); ok && strings.TrimSpace(v) != "" {
 		s.ClientID = strings.TrimSpace(v)
+	}
+	if s.ClientID == "1562901782579912804" {
+		s.ClientID = defaultClientID
 	}
 	if v, ok := str("inList"); ok {
 		s.InList = v
@@ -264,10 +266,9 @@ func (s *Settings) nameKeys() []string {
 // Whether the track's cover is looked for: from the player or iTunes.
 func (s *Settings) Covers() bool { return s.CoverSource == "player" || s.CoverSource == "itunes" }
 
-// Whether one's own status is on and has a title to show, one without
-// links and the plain words of casino ads and 18+.
+// Whether the custom status is enabled and has a title to show.
 func (s *Settings) ShowsOwn() bool {
-	return s.Own && len([]rune(strings.TrimSpace(s.OwnTitle))) >= 2 && isClean(s.OwnTitle) && isClean(s.OwnLine2)
+	return s.Own && len([]rune(strings.TrimSpace(s.OwnTitle))) >= 2
 }
 
 // The picture file of one's own status: ownPicture ("~/" for the home
@@ -294,17 +295,6 @@ func picturePath(setting, standard string) string {
 	}
 	return path
 }
-
-// Links: "site.com", "t.me/x", "www…", "http…" (a known zone only: "ft.Drake"
-// and "Mr. Smith" are not links). Words: as they are written in ads; a
-// spaced or misspelt one gets through, a lazy one does not. As
-// Settings.IsClean on Windows; Go's \w and \b know ASCII only, hence the
-// letter classes.
-var unclean = regexp.MustCompile(`(?i)https?:|www\.|[\p{L}\p{N}_-]\s?\.\s?(?:com|ru|net|org|io|me|gg|xyz|top|bet|casino|club|site|online|shop|store|pro|info|biz|cc|co|su|ua|kz|by|tv|link|app|dev|fun|win|vip|live|ly|to|рф)(?:$|[^\p{L}\p{N}_])|` +
-	`казино|casino|ставк|букмек|1\s?win|1\s?xbet|pin-?up|vavada|вулкан|слоты|джекпот|промокод|` +
-	`порн|porn|onlyfans|xxx|nsfw|18\+|секс|sex|голые|nudes`)
-
-func isClean(text string) bool { return !unclean.MatchString(text) }
 
 // The application one's own status goes out under, unless clientId names one of your own.
 func (s *Settings) OwnClientIDFor() string {

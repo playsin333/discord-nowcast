@@ -11,12 +11,12 @@ Yandex Music, Spotify, SoundCloud, VK, Telegram, YouTube in a browser, AIMP, loc
 [![release](https://img.shields.io/github/v/release/playsin333/discord-nowcast?color=5865f2)](https://github.com/playsin333/discord-nowcast/releases/latest)
 [![downloads](https://img.shields.io/github/downloads/playsin333/discord-nowcast/total?color=3d3c38)](https://github.com/playsin333/discord-nowcast/releases)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux%20(beta)-3d3c38)
-[![discord](https://img.shields.io/badge/discord-server-5865f2)](https://discord.gg/brMD3VYUAu)
+[![discord](https://img.shields.io/badge/discord-server-5865f2)](https://discord.gg/udz3TTZgPD)
 [![license](https://img.shields.io/badge/license-MIT-3d3c38)](LICENSE)
 
 [Русский](README.md) · **English**
 
-**[⬇ Download discord-nowcast.exe](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast.exe)** · [Linux](#linux-beta) · [Discord server](https://discord.gg/brMD3VYUAu) · [Discussions](https://github.com/playsin333/discord-nowcast/discussions) · [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml)
+**[⬇ Download discord-nowcast.exe](https://github.com/playsin333/discord-nowcast/releases/latest/download/discord-nowcast.exe)** · [Linux](#linux-beta) · [Discord server](https://discord.gg/udz3TTZgPD) · [Discussions](https://github.com/playsin333/discord-nowcast/discussions) · [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml)
 
 </div>
 
@@ -72,8 +72,8 @@ The raven by the clock, at the bottom right of the screen, is how you control it
 | Hide status for an hour | clears the status for an hour; click again to bring it back |
 | Sources in the status | a checkbox per app playing now; clear one to keep, say, YouTube in the browser out of the status |
 | What Windows sees | every app reporting a track right now, playing or paused; a click copies its app ID |
-| Start with Windows | chosen on first launch; change your choice here |
-| Own status… | instead of the track, "Listening to nowcast", "Watching nowcast" or "Playing nowcast" with two lines of your own (the second is optional), a picture and a time (how long it has been going, up to 100 hours). With *Playing* Discord puts nowcast under the header and the lines go below it. A click on the picture or the first line in Discord opens the nowcast server. Links, casino ads and 18+ in the lines are not shown. A check by the item means it is on |
+| Start with Windows | chosen on first launch; you can change the choice here |
+| Own status… | instead of the track, "Listening to nowcast", "Watching nowcast" or "Playing nowcast" with two lines of your own (the second is optional), a picture and a time (how long it has been going, up to 100 hours). With *Playing* Discord puts nowcast under the header and the lines go below it. A click on the picture or the first line in Discord opens the nowcast server. Text has no word or link filter and goes only to Discord. Get Nowcast opens our Discord server. |
 | Settings… | the settings window: what the member list shows, where the cover comes from, your own picture for tracks without a cover, button, pause, sources, autostart, updates. Changes apply at once |
 | Open log | what was sent to Discord and any errors |
 | Copy diagnostics | copies all a support question needs: the program and Windows versions, what Windows sees, whether Discord was found, the settings and the end of the log. Paste it into your post in the help forum. Your user folder name is masked |
@@ -106,7 +106,7 @@ Most of these are in the settings window. All of them live in `config.json` in `
 
 ## Linux (beta)
 
-There is a Linux version: the same status, the same Discord applications for the services, covers, the button and your own status. It is a beta: try it and tell us on the [server](https://discord.gg/brMD3VYUAu) what works and what does not.
+There is a Linux version: the same status, the same Discord applications for the services, covers, the button and your own status. It is a beta: try it and tell us on the [server](https://discord.gg/udz3TTZgPD) what works and what does not.
 
 **Install.** Pick the one for your distribution:
 
@@ -151,7 +151,7 @@ Windows already knows what is playing: it is the track card that pops up when yo
 
 The artist and title go to Discord and, when enabled, to lrclib.net for lyrics and iTunes for cover search. Images upload directly to the program's server; unrelated file hosts are not used. Existing Cloudflare links are retained for compatibility. Player covers are kept for one hour, manually picked pictures for six hours after their last upload. Both renew while needed. Only manually picked images appear in the moderation gallery. Limits and bans use a secret-keyed IP hash, not raw addresses in the database. Blocks and banned hashes survive cleanup. Update checks contact GitHub.
 
-When you upload a picture you chose yourself, your Discord username accompanies it for moderation. Automatic player covers and custom-status JSON do not include the username.
+When you upload a picture you chose yourself, your Discord username accompanies it for moderation. Automatic player covers do not include the username; custom-status text is not submitted to Nowcast.
 
 ## Building it yourself
 
@@ -179,7 +179,7 @@ On GitHub the program is built and checked by itself after every change.
 
 ## Questions, bugs, ideas
 
-- [Discord server](https://discord.gg/brMD3VYUAu): help, news, status screenshots, mostly in Russian.
+- [Discord server](https://discord.gg/udz3TTZgPD): help, news, status screenshots, mostly in Russian.
 - [Discussions](https://github.com/playsin333/discord-nowcast/discussions): questions, ideas, show your setup.
 - [Report a bug](https://github.com/playsin333/discord-nowcast/issues/new?template=bug.yml): the diagnostics help the most: tray menu → *Copy diagnostics*, then paste it into the report.
 
@@ -187,8 +187,12 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 License: [MIT](LICENSE).
 
-## Custom status moderation on Windows
+## Custom status and privacy
 
-Starting with 1.5.4, while a custom status is enabled, its title, second line and selected picture reference are sent over HTTPS to the Nowcast server and are available to the administrator for moderation. Submissions happen on changes and hourly; records are kept for 6 hours after the last submission. Statuses without pictures are also submitted. Disabled custom statuses are not submitted. Regular track text is not sent by this mechanism. The server uses an HMAC of the IP address for limits and bans. Deleting a moderation record does not remove the user's existing Discord activity.
+Custom-status text goes only to Discord. There is no word or link filter and no text submission to Nowcast. Get Nowcast opens our Discord server. Music activities retain their search buttons.
 
-Starting with 1.5.5, edits replace the previous custom-status card for the installation. A persistent random token is stored in `%APPDATA%/discord-nowcast/status-installation`, separately from config.json and diagnostics. Do not share this file: it permits updating the installation's card. Old pictures are deleted only when no other references remain. Existing records without a token retain their normal expiry.
+Manually selected pictures upload to Nowcast for 6 hours and can be reviewed and deleted by the administrator, who can also ban uploaders. The shared Nowcast application also handles custom statuses and AIMP.
+
+## Support the project
+
+Nowcast is free; the author pays for development and hosting. On Windows a dismissible first-run window offers voluntary support via a Support in RUB button, USDT · TRC20 (TRON) and [Telegram](https://t.me/playsin333tgk). All features remain free. Reopen it from the tray menu → Donate: RUB opens the payment page, USDT · TRC20 (TRON) reveals the address and copy button. The first-run preference is local to the Windows profile and survives updates and moving the exe.

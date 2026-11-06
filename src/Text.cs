@@ -47,13 +47,25 @@ namespace Nowcast
         public static readonly string Settings = T("Настройки…", "Settings…");
         public static readonly string OwnStatus = T("Свой статус…", "Own status…");
 
+        public static readonly string Donate = T("Донат", "Donate");
+        public static readonly string DonateChoose = T("Выбери способ поддержки", "Choose how to support");
+        public static readonly string DonateRubles = T("Рубли", "RUB");
+        public static readonly string SupportProject = T("Поддержать проект", "Support the project");
+        public static readonly string SupportThanks = T("Спасибо, что пользуешься Nowcast", "Thanks for using Nowcast");
+        public static readonly string SupportMessage = T(
+            "Nowcast — бесплатный проект. Разработку и хостинг я оплачиваю сам. Если программа тебе полезна, буду благодарен за любую добровольную поддержку. Все функции доступны бесплатно.",
+            "Nowcast is a free project. I pay for development and hosting myself. If the app is useful to you, I would appreciate any voluntary support. All features are free.");
+        public static readonly string SupportRubles = T("Поддержать рублями", "Support in RUB");
+        public static readonly string SupportCopy = T("Скопировать адрес", "Copy address");
+        public static readonly string SupportCopied = T("Адрес скопирован", "Address copied");
+        public static readonly string SupportSocial = T("Буду рад и подписке на мой Telegram — это тоже поддержка проекта.", "Following my Telegram channel also helps support the project.");
+        public static readonly string SupportTelegram = T("Telegram · @playsin333tgk", "Telegram · @playsin333tgk");
+        public static readonly string SupportContinue = T("Продолжить", "Continue");
+
         // The own status window.
         public static readonly string OwnOn = T("Показывать свой статус вместо трека", "Show my own status instead of the track");
-        public static readonly string OwnModeration = T(
-            "Текст и картинка включённого своего статуса отправляются на сервер Nowcast для модерации. Правки заменяют предыдущую карточку этой установки. Хранение — 6 часов после последней отправки.",
-            "While your custom status is enabled, its text and picture are sent to the Nowcast server for moderation. Edits replace the previous card for this installation. Records are kept for 6 hours after the last submission.");
-        public static readonly string OwnNote = T("Клик по картинке или строке 1 открывает сервер nowcast.", "A click on the picture or line 1 opens the nowcast server.");
-        public static readonly string OwnUnclean = T("Не покажется: в строках нельзя ссылки, рекламу казино и 18+.", "Won't show: no links, casino ads or 18+ in the lines.");
+        public static readonly string GetNowcast = T("Получить Nowcast", "Get Nowcast");
+        public static readonly string OwnNote = T("Текст отправляется только в Discord, без фильтра слов. Выбранные картинки загружаются на сервер Nowcast и могут быть удалены администратором. Кнопка «Получить Nowcast» открывает наш Discord-сервер.", "Text goes only to Discord, without a word filter. Selected pictures upload to the Nowcast server and may be removed by the administrator. Get Nowcast opens our Discord server.");
         public static readonly string OwnTypeLabel = T("Тип:", "Type:");
         public static readonly string OwnListening = T("Слушает nowcast", "Listening to nowcast");
         public static readonly string OwnWatching = T("Смотрит nowcast", "Watching nowcast");

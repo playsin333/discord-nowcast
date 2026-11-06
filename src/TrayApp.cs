@@ -25,6 +25,8 @@ namespace Nowcast
         bool closing;
         SettingsForm settingsForm;
         OwnForm ownForm;
+        SupportForm supportForm;
+        SupportForm donationForm;
 
         public TrayApp()
         {
@@ -57,6 +59,7 @@ namespace Nowcast
             menu.Items.Add(Text.CopyDiagnostics, null, delegate { CopyDiagnostics(); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(Text.DiscordServer, null, delegate { Program.Open(Program.DiscordInvite, null); });
+            menu.Items.Add(Text.Donate, null, delegate { ShowDonate(); });
             menu.Items.Add(Text.GitHub, null, delegate { Program.Open("https://github.com/" + Program.Repo, null); });
             menu.Items.Add(Text.Exit, null, delegate { ExitThread(); });
             menu.Opening += delegate { RefreshMenu(); };
@@ -83,6 +86,8 @@ namespace Nowcast
             Startup.Install();
 
             engine.Start();
+            // Queue after the message loop starts; the engine keeps running behind the window.
+            if (SupportForm.ShouldShow) ui.BeginInvoke(new Action(ShowSupport));
 
             // One check per launch, after the tray and startup prompt are ready.
             firstCheck.Tick += delegate
@@ -91,6 +96,20 @@ namespace Nowcast
                 CheckUpdates();
             };
             firstCheck.Start();
+        }
+
+        void ShowDonate()
+        {
+            if (donationForm == null || donationForm.IsDisposed) donationForm = new SupportForm(true);
+            donationForm.Show();
+            donationForm.Activate();
+        }
+
+        void ShowSupport()
+        {
+            if (supportForm == null || supportForm.IsDisposed) supportForm = new SupportForm();
+            supportForm.Show();
+            supportForm.Activate();
         }
 
         void RefreshStatus()
@@ -205,6 +224,8 @@ namespace Nowcast
             closing = true;
             icon.Visible = false;
             engine.Stop();
+            if (supportForm != null) supportForm.Dispose();
+            if (donationForm != null) donationForm.Dispose();
             icon.Dispose();
             firstCheck.Dispose();
             base.ExitThreadCore();

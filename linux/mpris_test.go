@@ -98,7 +98,7 @@ func TestEngineEndToEnd(t *testing.T) {
 	engine.Start()
 	defer engine.Stop()
 	hello := fake.next(t)
-	if hello["client_id"] != "1563159215709749389" {
+	if hello["client_id"] != "1568314291021549699" {
 		t.Fatalf("Spotify's application: %v", hello)
 	}
 	var activity map[string]interface{}
