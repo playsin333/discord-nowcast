@@ -6,3 +6,9 @@ __pycache__/
 server/vps/*.db*
 server/vps/*.env
 server/vps/*access.txt
+
+# Internal assistant notes and production operations live in discord-nowcast-dev.
+.claude/
+server/vps/provision.sh
+server/vps/verify_https.py
+server/vps/verify_cloudflare.py
