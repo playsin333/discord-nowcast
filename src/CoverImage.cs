@@ -22,6 +22,22 @@ namespace Nowcast
         // bigger than a cover, as PNG when it has transparent parts, else JPEG.
         public static byte[] FromFile(string path)
         {
+            using (var input = File.OpenRead(path))
+            {
+                var header = new byte[6];
+                input.Read(header, 0, header.Length);
+                if (GifImage.IsGif(header))
+                {
+                    if (input.Length > GifImage.MaxBytes) throw new InvalidDataException(Text.GifLimits);
+                    input.Position = 0;
+                    var bytes = new byte[(int)input.Length];
+                    int offset = 0, read;
+                    while (offset < bytes.Length && (read = input.Read(bytes, offset, bytes.Length - offset)) > 0) offset += read;
+                    if (offset != bytes.Length) throw new InvalidDataException(Text.GifInvalid);
+                    GifImage.Validate(bytes);
+                    return bytes;
+                }
+            }
             using (var source = new Bitmap(path))
             {
                 var isOpaque = !Image.IsAlphaPixelFormat(source.PixelFormat);
@@ -43,6 +59,11 @@ namespace Nowcast
 
         public static byte[] Prepare(byte[] image)
         {
+            if (GifImage.IsGif(image))
+            {
+                GifImage.Validate(image);
+                return image;
+            }
             try
             {
                 using (var stream = new MemoryStream(image))

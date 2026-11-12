@@ -13,7 +13,7 @@ import (
 
 // Pictures upload directly to the VPS, which enforces moderation.
 var reserveHost = "https://nowcast.85-192-42-111.sslip.io:10443"
-var uploadClient = &http.Client{Timeout: 6 * time.Second}
+var uploadClient = &http.Client{Timeout: 30 * time.Second}
 
 // Searches for metadata can take longer than cover uploads.
 var httpClient = &http.Client{Timeout: 20 * time.Second}
@@ -30,7 +30,11 @@ func upload(image []byte) (Uploaded, error) {
 }
 
 func uploadManaged(image []byte, query string) (Uploaded, error) {
-	url, err := toManaged(reserveHost, image, query)
+	return uploadManagedSlot(image, query, "status")
+}
+
+func uploadManagedSlot(image []byte, query, slot string) (Uploaded, error) {
+	url, err := toManagedSlot(reserveHost, image, query, slot)
 	if err != nil {
 		return Uploaded{}, err
 	}
@@ -57,13 +61,29 @@ func (e *uploadRejection) Error() string { return fmt.Sprintf("%d %s", e.status,
 // The picture itself in the body, the link in the reply. Named by its
 // hash, so one album's cover is kept once for everyone.
 func toManaged(origin string, image []byte, query string) (string, error) {
+	return toManagedSlot(origin, image, query, "status")
+}
+
+func toManagedSlot(origin string, image []byte, query, slot string) (string, error) {
 	kind := "image/jpeg"
 	if isPNG(image) {
 		kind = "image/png"
+	} else if isGIF(image) {
+		kind = "image/gif"
 	}
 	request, err := newRequest("POST", origin+"/upload"+query, bytes.NewReader(image))
 	if err != nil {
 		return "", err
+	}
+	token, err := installationToken()
+	if err != nil {
+		return "", err
+	}
+	if query == "?kind=own" {
+		request.Header.Set("X-Nowcast-Installation", token)
+		request.Header.Set("X-Nowcast-Slot", slot)
+	} else {
+		request.Header.Set("X-Nowcast-Client", token)
 	}
 	request.Header.Set("Content-Type", kind)
 	response, err := uploadClient.Do(request)
@@ -86,7 +106,7 @@ func toManaged(origin string, image []byte, query string) (string, error) {
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		return "", fmt.Errorf("%d %s", response.StatusCode, short(reply))
 	}
-	if !regexp.MustCompile("^" + regexp.QuoteMeta(origin) + "/[a-f0-9]{40}\\.(jpg|png)$").MatchString(reply) {
+	if !regexp.MustCompile("^" + regexp.QuoteMeta(origin) + "/[a-f0-9]{40}\\.(jpg|png|gif)$").MatchString(reply) {
 		return "", errors.New(short(reply))
 	}
 	return reply, nil

@@ -104,6 +104,12 @@ Most of these are in the settings window. All of them live in `config.json` in `
 | `hide` | apps never to show: `["chrome", "Telegram"]` |
 | `names` | your own source names: `{"chrome": "YouTube"}` |
 
+Manually selected pictures can be animated GIFs: up to 2 MiB, 512 × 512, 200 frames and 40 million total pixels across full frames. GIFs retain their animation. On Windows, the preview shows upload progress and a “Support in Discord” button. Playback in Discord depends on its animation settings.
+
+On Windows, “Discord preview” expands a sample card with the current track or custom status, picture/GIF and button. Text and settings update immediately; the preview does not send activities or upload pictures. Discord's actual layout may differ. The source list updates while settings are open and sizes itself to its contents. Pause, album visibility and lyrics are in “More settings”; the `GIF ⓘ` hint beside the picture picker shows the limits.
+
+Version 1.7.0: Windows adds “Retry upload” and “Copy support ID” beside the picture. Retry after an installation is unbanned; a file block must be lifted separately. Linux prints the public ID with `discord-nowcast --support-id`; restart to retry after an unban. This is an installation ID, not a hardware fingerprint or Discord account. Update the VPS using `server/vps/README.md` to enable the new moderation features.
+
 ## Linux (beta)
 
 There is a Linux version: the same status, the same Discord applications for the services, covers, the button and your own status. It is a beta: try it and tell us on the [server](https://discord.gg/udz3TTZgPD) what works and what does not.

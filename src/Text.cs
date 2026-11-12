@@ -41,8 +41,8 @@ namespace Nowcast
             "Запускать Nowcast вместе с Windows? Выбор можно изменить в настройках.",
             "Start Nowcast with Windows? You can change this in settings.");
         public static readonly string PictureModeration = T(
-            "Картинка и ваше имя пользователя Discord отправляются на сервер Nowcast для модерации.",
-            "The picture and your Discord username are sent to the Nowcast server for moderation.");
+            "Не загружается картинка? Напишите в поддержку в Discord.",
+            "Picture not uploading? Contact support in Discord.");
         public static readonly string Autostart = T("Запускать вместе с Windows", "Start with Windows");
         public static readonly string Settings = T("Настройки…", "Settings…");
         public static readonly string OwnStatus = T("Свой статус…", "Own status…");
@@ -76,14 +76,44 @@ namespace Nowcast
         public static readonly string OwnPick = T("Выбрать…", "Choose…");
         public static readonly string OwnRemove = T("Убрать", "Remove");
         public static readonly string OwnPictures = T("Картинки", "Pictures");
+        public static readonly string GifLimits = T("GIF: до 2 МиБ, 512 × 512, 200 кадров и 40 млн пикселей суммарно.", "GIF: up to 2 MiB, 512 × 512, 200 frames and 40 million total frame pixels.");
+        public static readonly string GifInvalid = T("GIF повреждён или имеет неподдерживаемую структуру.", "The GIF is damaged or has an unsupported structure.");
+        public static readonly string RetryPicture = T("Повторить загрузку", "Retry upload");
+        public static readonly string CopyUploadId = T("Скопировать ID", "Copy support ID");
+        public static readonly string UploadIdCopied = T("ID скопирован", "ID copied");
+        public static readonly string UploadIdNote = T("Отправьте этот ID в поддержку, чтобы найти вашу установку и проверить бан.", "Send this ID to support to find your installation and check its ban.");
+        public static readonly string UploadIdFailed = T("Не удалось скопировать ID: {0}", "Could not copy the ID: {0}");
+        public static readonly string PictureWaiting = T("Загрузится при показе в статусе.", "Will upload when shown in the status.");
+        public static readonly string PictureUploading = T("Загружается…", "Uploading…");
+        public static readonly string PictureUploaded = T("Загружено на сервер", "Uploaded to the server");
+        public static readonly string PictureBanned = T("Загрузка запрещена: вы забанены. Обратитесь в поддержку.", "Uploads are banned. Please contact support.");
+        public static readonly string PictureBlocked = T("Эта картинка запрещена модератором.", "This picture was blocked by a moderator.");
+        public static readonly string PictureRejected = T("Сервер отклонил файл: {0}", "The server rejected the file: {0}");
+        public static readonly string PictureRetry = T("Не удалось загрузить. Повторим автоматически.", "Upload failed. Will retry automatically.");
         public static readonly string OwnPictureFailed = T("Не получилось открыть картинку: {0}", "Could not open the picture: {0}");
         public static readonly string OwnTimeLabel = T("Сколько уже играет (до 100 ч):", "How long it has been going (up to 100 h):");
         public static readonly string Hours = T("ч", "h");
         public static readonly string Minutes = T("мин", "min");
 
         // The settings window.
+        public static readonly string ShowPreview = T("Предпросмотр в Discord ▸", "Discord preview ▸");
+        public static readonly string HidePreview = T("Предпросмотр в Discord ▾", "Discord preview ▾");
+        public static readonly string PreviewHint = T("Пример карточки. Внешний вид в Discord может отличаться.", "Card preview. Discord may display it differently.");
+        public static readonly string PreviewExample = T("Нет активного трека — показан пример.", "No active track — showing an example.");
+        public static readonly string PreviewMember = T("В списке участников: ", "In the member list: ");
+        public static readonly string PreviewTitle = T("Название трека", "Track title");
+        public static readonly string PreviewArtist = T("Исполнитель", "Artist");
+        public static readonly string PreviewAlbum = T("Альбом", "Album");
+        public static readonly string PreviewOwnTitle = T("Ваш статус", "Your status");
+        public static readonly string PreviewListening = T("Слушает ", "Listening to ");
+        public static readonly string PreviewWatching = T("Смотрит ", "Watching ");
+        public static readonly string PreviewPlaying = T("Играет в ", "Playing ");
+        public static readonly string PreviewApplication = T("ваше приложение Discord", "your Discord application");
+        public static readonly string MoreOptions = T("Другие настройки ▸", "More settings ▸");
+        public static readonly string LessOptions = T("Другие настройки ▾", "More settings ▾");
+        public static readonly string GifHint = T("GIF ⓘ", "GIF ⓘ");
         public static readonly string StatusHeading = T("Статус в Discord", "Discord status");
-        public static readonly string InListLabel = T("Что видно в списке участников после «Слушает»:", "What the member list shows after \"Listening to\":");
+        public static readonly string InListLabel = T("В списке участников показывать:", "Show in the member list:");
         public static readonly string InListSource = T("Откуда играет: SoundCloud, Telegram…", "Where it plays: SoundCloud, Telegram…");
         public static readonly string InListArtist = T("Исполнитель", "The artist");
         public static readonly string InListTitle = T("Название трека", "The track title");
@@ -99,7 +129,7 @@ namespace Nowcast
         public static readonly string ShowPausedOption = T("Не убирать статус на паузе", "Keep the status on pause");
         public static readonly string HideAlbumOption = T("Убрать альбом", "Hide the album");
         public static readonly string LyricsOption = T("Текст песни в статусе (строка, которую поют)", "Lyrics in the status (the line being sung)");
-        public static readonly string SourcesNote = T("Приложения, которые сейчас играют. Снимите галочку, чтобы не показывать его в статусе.", "Apps playing now. Clear a box to keep that app out of the status.");
+        public static readonly string SourcesNote = T("Снимите галочку, чтобы скрыть приложение в статусе.", "Clear a box to hide that app from the status.");
         public static readonly string ProgramHeading = T("Программа", "The program");
         public static readonly string CheckUpdatesOption = T("При запуске открывать GitHub, если есть обновление", "Open GitHub on startup when an update is available");
         public static readonly string Advanced = T("Дополнительно (config.json)", "Advanced (config.json)");
@@ -108,7 +138,7 @@ namespace Nowcast
         public static readonly string CopyDiagnostics = T("Скопировать диагностику", "Copy diagnostics");
         public static readonly string DiagnosticsCopied = T("Диагностика скопирована. Вставьте её (Ctrl+V) в сообщение на форуме помощи.", "Diagnostics copied. Paste it (Ctrl+V) into your post in the help forum.");
         public static readonly string UpdateFailed = T("Не получилось: {0}", "That didn't work: {0}");
-        public static readonly string DiscordServer = T("Сервер в Discord: вопросы и баги", "Discord server: questions and bugs");
+        public static readonly string DiscordServer = T("Поддержка в Discord", "Support in Discord");
         public static readonly string GitHub = T("Страница на GitHub", "GitHub page");
         public static readonly string Exit = T("Выход", "Exit");
 

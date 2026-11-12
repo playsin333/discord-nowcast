@@ -50,6 +50,18 @@ namespace Nowcast
         // For the tray: one line about the status and the sessions Windows reports.
         public string Status { get; private set; }
         public List<Track> Sessions { get; private set; }
+
+        // Publish one immutable reference so the UI never combines one track
+        // with another track's cover while the engine is updating.
+        internal sealed class PreviewSnapshot
+        {
+            public readonly Track Track;
+            public readonly string Image, Lyric;
+            public PreviewSnapshot(Track track, string image, string lyric)
+            { Track = track; Image = image; Lyric = lyric; }
+        }
+        volatile PreviewSnapshot preview;
+        internal PreviewSnapshot Preview { get { return preview; } }
         public event Action Changed;
 
         public Engine()
@@ -183,6 +195,9 @@ namespace Nowcast
             // One's own status takes the place of whatever plays.
             var isOwn = !isHidden && settings.ShowsOwn;
             var track = isHidden || isOwn ? null : Pick(sessions);
+            var previous = preview;
+            bool sameTrack = previous != null && previous.Track != null && track != null && previous.Track.Key == track.Key;
+            preview = new PreviewSnapshot(track, sameTrack ? previous.Image : null, sameTrack ? previous.Lyric : null);
             // Turned on again later: its time counts from then.
             if (!isOwn) ownKey = null;
             Sessions = sessions;
@@ -257,6 +272,7 @@ namespace Nowcast
             {
                 lyric = Lyrics.Line(Lyrics.Find(track), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start.Value);
             }
+            preview = new PreviewSnapshot(track, image, lyric);
             var lyricCame = key == sentKey && track != null && lyric != sentLyric;
             var changed = key != sentKey || playing != sentPlaying || timingChanged || isResend || coverCame || lyricCame;
             // Discord takes at most 5 updates per 20 seconds.

@@ -370,7 +370,7 @@ func TestFallbackPicture(t *testing.T) {
 	writePNG(t, s.FallbackPicture, 40, 40, color.NRGBA{9, 9, 9, 255})
 	track := song("Song")
 	e.image(track, s)
-	<-r.c.files[s.FallbackPicture].job.done
+	<-r.c.files["fallback|"+s.FallbackPicture].job.done
 	if got := e.image(track, s); !strings.HasPrefix(got, "https://host/") {
 		t.Fatalf("the picked picture, before the settings' link: %q", got)
 	}

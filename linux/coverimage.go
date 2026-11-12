@@ -9,6 +9,7 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"os"
 
 	"golang.org/x/image/draw"
@@ -23,6 +24,13 @@ import (
 const maxSide = 300
 
 func preparePicture(data []byte) []byte {
+	if isGIF(data) {
+		if err := validateGIF(data); err != nil {
+			logf("GIF rejected: %v", err)
+			return nil
+		}
+		return data
+	}
 	source, format, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		logf("Cover not prepared, sent as it is: %v", err)
@@ -47,9 +55,38 @@ func preparePicture(data []byte) []byte {
 // A picture of one's own from a file of any kind this reads: no bigger than
 // a cover, as PNG when it has see-through parts, else JPEG.
 func pictureFromFile(path string) ([]byte, error) {
-	data, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
+	}
+	defer file.Close()
+	header := make([]byte, 6)
+	_, _ = file.Read(header)
+	if isGIF(header) {
+		info, err := file.Stat()
+		if err != nil {
+			return nil, err
+		}
+		if info.Size() > gifMaxBytes {
+			return nil, fmt.Errorf("%w: %s", errInvalidGIF, gifLimits)
+		}
+	}
+	if _, err := file.Seek(0, 0); err != nil {
+		return nil, err
+	}
+	var input io.Reader = file
+	if isGIF(header) {
+		input = io.LimitReader(file, gifMaxBytes+1)
+	}
+	data, err := io.ReadAll(input)
+	if err != nil {
+		return nil, err
+	}
+	if isGIF(data) {
+		if err := validateGIF(data); err != nil {
+			return nil, err
+		}
+		return data, nil
 	}
 	source, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {

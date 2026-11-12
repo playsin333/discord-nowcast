@@ -14,6 +14,13 @@ namespace Nowcast
         // lyric: the line of the song sung now, or null.
         public static Dictionary<string, object> Build(Track track, long? startedAt, Settings settings, string lyric = null)
         {
+            return BuildWithImage(track, startedAt, settings, Image(track, settings), lyric);
+        }
+
+        // Formatting only: the preview must never enter the engine's cover cache
+        // or start an upload from the UI thread.
+        internal static Dictionary<string, object> BuildWithImage(Track track, long? startedAt, Settings settings, string image, string lyric = null)
+        {
             var source = track.Source.Name;
             var artist = track.Artist != "" ? track.Artist : source;
             var activity = new Dictionary<string, object> { { "type", track.Source.IsVideo ? 3 : 2 }, { "instance", false } };
@@ -45,7 +52,6 @@ namespace Nowcast
             if (!track.IsPlaying) activity["state"] = Limit(state + " · " + Text.Paused);
 
             var assets = new Dictionary<string, object>();
-            var image = Image(track, settings);
             if (image != null)
             {
                 assets["large_image"] = image;

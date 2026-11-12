@@ -14,6 +14,10 @@ namespace Nowcast
         // The kinds of status, in the order of the list.
         static readonly string[] typeValues = { "listening", "watching", "playing" };
 
+        readonly StatusPreview preview = new StatusPreview { Visible = false };
+        readonly Button previewToggle = Flat(Strings.ShowPreview, false);
+        readonly Timer previewTimer = new Timer { Interval = 1000 };
+        bool previewExpanded;
         readonly Theme.CheckBox on = new Theme.CheckBox { Text = Strings.OwnOn };
         readonly ComboBox type = SettingsForm.Choices();
         readonly TextBox title = Line();
@@ -38,12 +42,16 @@ namespace Nowcast
             StartPosition = FormStartPosition.CenterScreen;
             AutoSize = true;
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            // Keep the longer picture controls accessible on small screens.
+            AutoScroll = true;
             Padding = new Padding(14);
             BackColor = Theme.Back;
             ForeColor = Theme.Text;
 
             var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false };
             layout.Controls.Add(SettingsForm.Heading(Strings.OwnStatus.TrimEnd('…')));
+            layout.Controls.Add(previewToggle);
+            layout.Controls.Add(preview);
             layout.Controls.Add(on);
             layout.Controls.Add(SettingsForm.Note(Strings.OwnNote));
             type.Items.AddRange(new object[] { Strings.OwnListening, Strings.OwnWatching, Strings.OwnPlaying });
@@ -75,6 +83,15 @@ namespace Nowcast
             Controls.Add(layout);
 
             Fill();
+            previewToggle.Click += delegate
+            {
+                previewExpanded = !previewExpanded;
+                preview.Visible = previewExpanded;
+                previewToggle.Text = previewExpanded ? Strings.HidePreview : Strings.ShowPreview;
+                RefreshPreview(); SettingsForm.FitToScreen(this, false);
+            };
+            previewTimer.Tick += delegate { RefreshPreview(); };
+            VisibleChanged += delegate { previewTimer.Enabled = Visible; if (Visible) RefreshPreview(); };
 
             on.CheckedChanged += delegate { Change(s => s.Own = on.Checked); };
             type.SelectedIndexChanged += delegate { Change(s => s.OwnType = typeValues[type.SelectedIndex]); };
@@ -100,6 +117,7 @@ namespace Nowcast
             minutes.Value = settings.OwnMinutes % 60;
             picture.ShowPicture();
             isLoading = false;
+            RefreshPreview();
         }
 
         void Later()
@@ -107,6 +125,7 @@ namespace Nowcast
             if (isLoading) return;
             typing.Stop();
             typing.Start();
+            RefreshPreview();
         }
 
         void SaveTyped()
@@ -122,6 +141,12 @@ namespace Nowcast
                 s.OwnLine2 = second;
                 s.OwnMinutes = total;
             });
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            SettingsForm.FitToScreen(this);
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -145,6 +170,22 @@ namespace Nowcast
             var settings = Settings.Load();
             change(settings);
             settings.Save();
+            RefreshPreview();
+        }
+
+        void RefreshPreview()
+        {
+            if (!previewExpanded || isLoading) return;
+            bool hasImage = System.IO.File.Exists(Settings.OwnPicturePath);
+            string value = typeValues[Math.Max(0, type.SelectedIndex)];
+            int total = Math.Min(Settings.MaxOwnMinutes, (int)hours.Value * 60 + (int)minutes.Value);
+            preview.Render(StatusPreviewModel.Own(value, title.Text, line2.Text, total, hasImage), hasImage ? Settings.OwnPicturePath : null, null);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) { typing.Dispose(); previewTimer.Dispose(); }
+            base.Dispose(disposing);
         }
 
         static Label Caption(string text)

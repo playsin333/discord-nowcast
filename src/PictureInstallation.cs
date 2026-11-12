@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Nowcast
@@ -10,6 +12,13 @@ namespace Nowcast
         internal static string IdentityPath = Path.Combine(Log.Folder, "status-installation");
         // Keep this outside config.json and diagnostics. It is a random installation
         // token for replacing pictures, not the Discord account or text status.
+        // Public support ID: never copy the bearer token sent with uploads.
+        internal static string PublicId()
+        {
+            using (var sha = SHA256.Create())
+                return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(Installation()))).Replace("-", "").ToLowerInvariant();
+        }
+
         internal static string Installation()
         {
             lock (gate)

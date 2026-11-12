@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -33,6 +34,9 @@ namespace Nowcast
             public string Print;
             public bool Failed;
             public bool Answered;
+            public bool Permanent;
+            public long RetryVersion;
+            public string Error;
         }
 
         static readonly Dictionary<string, Entry> cache = new Dictionary<string, Entry>();
@@ -325,6 +329,39 @@ namespace Nowcast
             public Task<Result> Job;
             public DateTime RetryAt;
             public int Failures;
+            public long RetryVersion;
+        }
+
+        class PictureProgress
+        {
+            public string Print;
+            public string Message;
+        }
+        static readonly ConcurrentDictionary<string, PictureProgress> progress = new ConcurrentDictionary<string, PictureProgress>();
+
+        // UI reads immutable snapshots; the file cache belongs to the engine thread.
+        public static string PictureStatus(string path)
+        {
+            var file = new FileInfo(path);
+            if (!file.Exists) return "";
+            var print = file.LastWriteTimeUtc.Ticks + ":" + file.Length;
+            PictureProgress value;
+            return progress.TryGetValue(path, out value) && value.Print == print ? value.Message : Text.PictureWaiting;
+        }
+
+        static void Progress(string path, string print, string message)
+        {
+            progress[path] = new PictureProgress { Print = print, Message = message };
+        }
+
+        static readonly ConcurrentDictionary<string, long> retryRequests = new ConcurrentDictionary<string, long>();
+
+        public static void RetryPicture(string path)
+        {
+            retryRequests.AddOrUpdate(path, 1, (key, version) => version + 1);
+            var file = new FileInfo(path);
+            if (file.Exists) Progress(path, file.LastWriteTimeUtc.Ticks + ":" + file.Length, Text.PictureWaiting);
+            Notify();
         }
 
         static readonly Dictionary<string, FileState> files = new Dictionary<string, FileState>();
@@ -343,6 +380,15 @@ namespace Nowcast
                 state.Failures = 0;
                 state.RetryAt = DateTime.MinValue;
             }
+            long requested;
+            retryRequests.TryGetValue(path, out requested);
+            if (requested != state.RetryVersion)
+            {
+                state.RetryVersion = requested;
+                state.Entry = null;
+                state.Failures = 0;
+                state.RetryAt = DateTime.MinValue;
+            }
             if (print == null) return null;
             if (state.Job != null)
             {
@@ -350,34 +396,45 @@ namespace Nowcast
                 var result = state.Job.Result;
                 state.Job = null;
                 // A picture picked since is not this one.
-                if (result.Print == print)
+                if (result.Print == print && result.RetryVersion == requested)
                 {
                     if (result.Entry != null)
                     {
                         state.Entry = result.Entry;
                         state.Failures = 0;
+                        Progress(path, print, Text.PictureUploaded);
                     }
                     else
                     {
-                        state.RetryAt = now.AddSeconds(Math.Min(60, 1 << ++state.Failures));
+                        state.RetryAt = result.Permanent ? DateTime.MaxValue : now.AddSeconds(Math.Min(60, 1 << Math.Min(6, ++state.Failures)));
+                        if (result.Permanent) state.Entry = null;
+                        Progress(path, print, result.Error ?? Text.PictureRetry);
                     }
                 }
             }
             if (state.Entry != null && now < state.Entry.Renew) return state.Entry.Url;
             if (now < state.RetryAt) return FileUsable(state, now);
             var name = Path.GetFileName(path);
+            Progress(path, print, Text.PictureUploading);
             state.Job = Task.Run(delegate
             {
                 try
                 {
                     var entry = Uploaded(UploadOwn(File.ReadAllBytes(path), path == Settings.OwnPicturePath ? "status" : "fallback"));
                     Log.Write("Picture " + name + ": " + entry.Url);
-                    return new Result { Entry = entry, Print = print };
+                    return new Result { Entry = entry, Print = print, RetryVersion = requested };
                 }
                 catch (Exception e)
                 {
-                    Log.Write("Picture " + name + " not uploaded, will try again: " + Message(e));
-                    return new Result { Failed = true, Print = print };
+                    var rejection = e as Hosts.Rejected;
+                    bool permanent = rejection != null || e is InvalidDataException;
+                    string error = Text.PictureRetry;
+                    if (rejection != null)
+                        error = rejection.Status == 403 ? Text.PictureBanned : rejection.Status == 451 ? Text.PictureBlocked
+                            : string.Format(Text.PictureRejected, rejection.Message);
+                    else if (e is InvalidDataException) error = e.Message;
+                    Log.Write("Picture " + name + " not uploaded" + (permanent ? ": " : ", will try again: ") + Message(e));
+                    return new Result { Failed = true, Print = print, Permanent = permanent, Error = error, RetryVersion = requested };
                 }
             });
             state.Job.ContinueWith(t => Notify());

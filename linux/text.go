@@ -47,7 +47,7 @@ var text = struct {
 	OpenLog:         t("Открыть лог", "Open log"),
 	Diagnostics:     t("Диагностика", "Diagnostics"),
 	UpdateAvailable: t("Вышла версия %s", "Version %s is out"),
-	DiscordServer:   t("Сервер в Discord: вопросы и баги", "Discord server: questions and bugs"),
+	DiscordServer:   t("Поддержка в Discord", "Support in Discord"),
 	Exit:            t("Выход", "Exit"),
 
 	Paused:        t("пауза", "paused"),

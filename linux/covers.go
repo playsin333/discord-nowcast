@@ -35,10 +35,11 @@ type coverEntry struct {
 // What a lookup in the background brought: a cover, or that it failed and
 // is to be tried again; Answered: iTunes gave its answer, found or not.
 type coverResult struct {
-	Entry    *coverEntry
-	Print    string
-	Failed   bool
-	Answered bool
+	Entry     *coverEntry
+	Print     string
+	Failed    bool
+	Answered  bool
+	Permanent bool
 }
 
 // The player's picture: the bytes, or a link Discord can take as it is.
@@ -118,7 +119,6 @@ func newCovers(ready func()) *Covers {
 		now:         time.Now,
 		readPicture: readPicture,
 		upload:      func(image []byte) (Uploaded, error) { return upload(preparePicture(image)) },
-		uploadOwn:   uploadOwn,
 		lookUp:      fromITunes,
 		ready:       ready,
 		files:       map[string]*fileState{},
@@ -357,12 +357,20 @@ type fileState struct {
 	failures int
 }
 
-func (c *Covers) FindFile(path string) string {
+func (c *Covers) FindFile(path string, slots ...string) string {
+	slot := "status"
+	if len(slots) > 0 {
+		slot = slots[0]
+	}
+	key := path
+	if slot != "status" {
+		key = slot + "|" + path
+	}
 	now := c.now()
-	state := c.files[path]
+	state := c.files[key]
 	if state == nil {
 		state = &fileState{}
-		c.files[path] = state
+		c.files[key] = state
 	}
 	print := ""
 	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
@@ -388,6 +396,10 @@ func (c *Covers) FindFile(path string) string {
 			} else {
 				state.failures++
 				state.retryAt = now.Add(backoff(state.failures))
+				if result.Permanent {
+					state.entry = nil
+					state.retryAt = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+				}
 			}
 		}
 	}
@@ -404,15 +416,21 @@ func (c *Covers) FindFile(path string) string {
 		data, err := pictureFromFile(path)
 		if err == nil {
 			var uploaded Uploaded
-			uploaded, err = c.uploadOwn(data)
+			if c.uploadOwn != nil {
+				uploaded, err = c.uploadOwn(data)
+			} else {
+				uploaded, err = uploadManagedSlot(data, "?kind=own", slot)
+			}
 			if err == nil {
 				entry := c.uploaded(uploaded)
 				logf("Picture %s: %s", name, entry.URL)
 				return coverResult{Entry: entry, Print: print}
 			}
 		}
-		logf("Picture %s not uploaded, will try again: %v", name, err)
-		return coverResult{Failed: true, Print: print}
+		var rejection *uploadRejection
+		permanent := errors.As(err, &rejection) || errors.Is(err, errInvalidGIF)
+		logf("Picture %s not uploaded (permanent=%t): %v", name, permanent, err)
+		return coverResult{Failed: true, Print: print, Permanent: permanent}
 	})
 	return state.usable(now)
 }

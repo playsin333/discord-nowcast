@@ -8,7 +8,7 @@ namespace Nowcast
     static class Hosts
     {
         public static readonly HttpClient Http = Client();
-        internal static HttpClient UploadHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
+        internal static HttpClient UploadHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         public const string Own = "https://nowcast-covers.playsin333.workers.dev";
         public const string Reserve = "https://nowcast.85-192-42-111.sslip.io:10443";
         static HttpClient Client()
@@ -42,13 +42,18 @@ namespace Nowcast
             using (var content = new ByteArrayContent(image))
             using (var request = new HttpRequestMessage(HttpMethod.Post, origin + "/upload" + query))
             {
-                content.Headers.TryAddWithoutValidation("Content-Type", IsPng(image) ? "image/png" : "image/jpeg");
+                content.Headers.TryAddWithoutValidation("Content-Type", GifImage.IsGif(image) ? "image/gif" : IsPng(image) ? "image/png" : "image/jpeg");
                 request.Content = content;
                 request.Headers.TryAddWithoutValidation("User-Agent", "discord-nowcast/" + Program.Version);
-                if (slot != null)
+                if (query == "?kind=own")
                 {
                     request.Headers.TryAddWithoutValidation("X-Nowcast-Installation", PictureInstallation.Installation());
-                    request.Headers.TryAddWithoutValidation("X-Nowcast-Slot", slot);
+                    request.Headers.TryAddWithoutValidation("X-Nowcast-Slot", slot ?? "status");
+                }
+                else
+                {
+                    // Older VPS versions ignore this header on ordinary covers.
+                    request.Headers.TryAddWithoutValidation("X-Nowcast-Client", PictureInstallation.Installation());
                 }
                 if (query == "?kind=own")
                 {
@@ -63,7 +68,7 @@ namespace Nowcast
                     if (status == 400 || (status == 403 && answer == "Banned") || status == 413 || status == 415 || status == 451)
                         throw new Rejected(status, Short(answer));
                     if (!response.IsSuccessStatusCode) throw new InvalidOperationException(status + " " + Short(answer));
-                    if (!Regex.IsMatch(answer, "^" + Regex.Escape(origin) + "/[0-9a-f]{40}\\.(jpg|png)$"))
+                    if (!Regex.IsMatch(answer, "^" + Regex.Escape(origin) + "/[0-9a-f]{40}\\.(jpg|png|gif)$"))
                         throw new InvalidOperationException(Short(answer));
                     return answer;
                 }

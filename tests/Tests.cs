@@ -58,6 +58,12 @@ namespace Nowcast
             Run("own status settings", OwnSettings);
             Run("own picture uploaded and renewed", OwnPicture);
             Run("own picture from a file", OwnPictureFile);
+            Run("GIF frames survive selection, preparation and upload", AnimatedPicture);
+            Run("GIF limits reject hostile containers before decoding", GifBounds);
+            Run("picture progress and permanent rejection", PictureProgress);
+            Run("status preview reflects settings without uploads", StatusPreviewFormatting);
+            Run("public installation ID is stable and never exposes its token", PublicInstallationId);
+            Run("manual retry supersedes an in-flight result", PictureRetryInFlight);
             Console.WriteLine(failed == 0 ? "All passed" : failed + " failed");
             Directory.Delete(testFolder, true);
             return failed == 0 ? 0 : 1;
@@ -668,19 +674,215 @@ namespace Nowcast
         {
             public int PrimaryStatus = 503;
             public readonly List<string> Requests = new List<string>();
-            public string Installation, Slot, Nick;
+            public string Installation, Slot, Nick, CoverClient;
+            public string Mime, Extension = "png";
+            public byte[] Body;
             protected override System.Threading.Tasks.Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken cancellation)
             {
                 var origin = request.RequestUri.GetLeftPart(UriPartial.Authority);
                 Requests.Add(origin);
                 if (request.Headers.Contains("X-Nowcast-Installation")) Installation = request.Headers.GetValues("X-Nowcast-Installation").First();
+                CoverClient = request.Headers.Contains("X-Nowcast-Client") ? request.Headers.GetValues("X-Nowcast-Client").First() : null;
                 if (request.Headers.Contains("X-Nowcast-Slot")) Slot = request.Headers.GetValues("X-Nowcast-Slot").First();
                 Nick = request.Headers.Contains("X-Nowcast-Discord-Nick") ? request.Headers.GetValues("X-Nowcast-Discord-Nick").First() : null;
+                Mime = request.Content.Headers.ContentType.MediaType;
+                Body = request.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
                 var status = PrimaryStatus;
                 var response = new System.Net.Http.HttpResponseMessage((System.Net.HttpStatusCode)status);
-                response.Content = new System.Net.Http.StringContent(status == 200 ? origin + "/" + new string('a', 40) + ".png" : (status == 403 ? "Banned" : "unavailable"));
+                response.Content = new System.Net.Http.StringContent(status == 200 ? origin + "/" + new string('a', 40) + "." + Extension : (status == 403 ? "Banned" : "unavailable"));
                 return System.Threading.Tasks.Task.FromResult(response);
             }
+        }
+
+        static void StatusPreviewFormatting()
+        {
+            CoversWith(delegate
+            {
+                var track = Track("SoundCloud.exe", "Artist", "Title");
+                track.Album = "Album";
+                var settings = new Settings { InList = "artist" };
+                var model = StatusPreviewModel.Music(track, settings, true, null);
+                Check(model.Details == "Title" && model.State == "Artist", "real track lines");
+                Check(model.Member.Contains("Artist") && model.Extra == "Album", "member list and album");
+                Check(model.Button.Length > 0, "music button in the preview");
+                settings.InList = "title"; settings.HideAlbum = true; settings.Buttons = false;
+                model = StatusPreviewModel.Music(track, settings, true, null);
+                Check(model.Member.Contains("Title") && model.Extra == "" && model.Button == "", "changes immediately affect preview");
+                model = StatusPreviewModel.Music(track, settings, true, "Sung line");
+                Check(model.Extra == "Sung line", "lyrics replace album when a cover is present");
+                model = StatusPreviewModel.Music(track, settings, false, "Sung line");
+                Check(model.State == "Sung line" && model.Extra == "", "lyrics without a cover");
+                track.IsPlaying = false;
+                model = StatusPreviewModel.Music(track, settings, false, null);
+                Check(model.State.Contains(Text.Paused), "paused track");
+                model = StatusPreviewModel.Own("watching", "My title", "", 6000, true);
+                Check(model.Header.StartsWith(Text.PreviewWatching) && model.Details == "My title", "own status type and title");
+                Check(model.State == "" && model.Extra == "100:00:00" && model.Button == Text.GetNowcast, "optional line, 100 hours and own button");
+                Check(StatusPreviewModel.Music(null, settings, false, null).Hint == Text.PreviewExample, "empty player is explicitly an example");
+                Check(uploads == 0 && lookups == 0, "preview never uploads or starts iTunes lookups");
+            });
+        }
+
+        static void PublicInstallationId()
+        {
+            var saved = PictureInstallation.IdentityPath;
+            var path = Path.Combine(Log.Folder, "support-identity");
+            try
+            {
+                PictureInstallation.IdentityPath = path;
+                File.WriteAllText(path, new string('a', 64));
+                var id = PictureInstallation.PublicId();
+                Check(id == "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb", "same SHA-256 ID as the server");
+                Check(PictureInstallation.PublicId() == id && PictureInstallation.Installation() == new string('a',64), "stable token and public ID");
+                File.WriteAllText(path, "broken");
+                bool rejected = false;
+                try { PictureInstallation.PublicId(); } catch (IOException) { rejected = true; }
+                Check(rejected && File.ReadAllText(path) == "broken", "corrupted token is not silently replaced to bypass a ban");
+            }
+            finally { PictureInstallation.IdentityPath = saved; File.Delete(path); }
+        }
+
+        static void PictureRetryInFlight()
+        {
+            CoversWith(delegate
+            {
+                var path = Path.Combine(Log.Folder, "retry-in-flight");
+                File.WriteAllBytes(path, new byte[] { 7 });
+                var saved = Covers.UploadOwn;
+                int calls = 0;
+                using (var started = new ManualResetEvent(false))
+                using (var release = new ManualResetEvent(false))
+                {
+                    try
+                    {
+                        Covers.UploadOwn = delegate(byte[] data, string slot)
+                        {
+                            int call = Interlocked.Increment(ref calls);
+                            if (call == 1) { started.Set(); release.WaitOne(); }
+                            return new Hosts.Uploaded { Url = "https://host/attempt-" + call, Keep = TimeSpan.FromHours(6) };
+                        };
+                        Covers.FindFile(path);
+                        Check(started.WaitOne(5000), "first upload began");
+                        Covers.RetryPicture(path);
+                        Check(Covers.FindFile(path) == null && calls == 1, "retry does not start a parallel upload");
+                        release.Set(); Settle();
+                        Check(Covers.FindFile(path) == null, "old successful result cannot consume a retry request");
+                        Settle();
+                        Check(Covers.FindFile(path) == "https://host/attempt-2" && calls == 2, "explicit retry completes once");
+                    }
+                    finally { release.Set(); Settle(); Covers.UploadOwn = saved; File.Delete(path); }
+                }
+            });
+        }
+
+        static byte[] AnimatedFixture()
+        {
+            return File.ReadAllBytes(Path.Combine("tests", "fixtures", "animated.gif"));
+        }
+
+        static void AnimatedPicture()
+        {
+            var data = AnimatedFixture();
+            var path = Path.Combine(Log.Folder, "animated-picture");
+            var saved = Hosts.UploadHttp;
+            try
+            {
+                File.WriteAllBytes(path, data);
+                var picked = CoverImage.FromFile(path);
+                Check(picked.SequenceEqual(data), "picked GIF bytes, timing and loop preserved");
+                Check(CoverImage.Prepare(picked).SequenceEqual(data), "upload preparation keeps every frame");
+                using (var stream = new MemoryStream(picked))
+                using (var image = Image.FromStream(stream))
+                {
+                    Check(image.GetFrameCount(FrameDimension.Time) == 3, "three animated frames");
+                    image.SelectActiveFrame(FrameDimension.Time, 2);
+                    using (var frame = new Bitmap(image)) Check(frame.GetPixel(0, 0).B > 200, "last frame is decoded");
+                }
+                var fake = new FakeHostHandler { PrimaryStatus = 200, Extension = "gif" };
+                Hosts.UploadHttp = new System.Net.Http.HttpClient(fake);
+                var uploaded = Hosts.UploadOwn(picked);
+                Check(uploaded.Url.EndsWith(".gif") && fake.Mime == "image/gif", "GIF URL and MIME accepted");
+                Check(fake.Body.SequenceEqual(data), "upload sends original animation");
+            }
+            finally
+            {
+                Hosts.UploadHttp.Dispose(); Hosts.UploadHttp = saved;
+                File.Delete(path);
+            }
+        }
+
+        static void RejectGif(byte[] data, string reason)
+        {
+            bool rejected = false;
+            try { GifImage.Validate(data); } catch (InvalidDataException) { rejected = true; }
+            Check(rejected, reason);
+        }
+
+        static void GifBounds()
+        {
+            var data = AnimatedFixture();
+            var wide = (byte[])data.Clone();
+            wide[6] = 1; wide[7] = 2; // 513 pixels.
+            RejectGif(wide, "too wide");
+            RejectGif(data.Take(data.Length - 10).ToArray(), "truncated frame");
+            var oversized = new byte[GifImage.MaxBytes + 1];
+            Array.Copy(data, oversized, data.Length);
+            RejectGif(oversized, "too many bytes");
+            // One minimal 1px frame repeated in a valid GIF container. Limits
+            // must be checked before allocating/decoding hundreds of frames.
+            var single = Convert.FromBase64String("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==");
+            using (var output = new MemoryStream())
+            {
+                output.Write(single, 0, 19);
+                for (int i = 0; i < 201; i++) output.Write(single, 19, single.Length - 20);
+                output.WriteByte(0x3b);
+                RejectGif(output.ToArray(), "too many frames");
+                var many = output.ToArray();
+                many[6] = many[8] = 0; many[7] = many[9] = 2;
+                RejectGif(many, "too many total frame pixels");
+            }
+        }
+
+        static void PictureProgress()
+        {
+            CoversWith(delegate
+            {
+                var path = Path.Combine(Log.Folder, "progress-picture");
+                File.WriteAllBytes(path, new byte[] { 9 });
+                var upload = Covers.UploadOwn;
+                int attempts = 0;
+                try
+                {
+                    Covers.UploadOwn = delegate(byte[] image, string slot)
+                    {
+                        Interlocked.Increment(ref attempts);
+                        throw new Hosts.Rejected(403, "Banned");
+                    };
+                    Check(Covers.PictureStatus(path) == Text.PictureWaiting, "unused picture waits");
+                    Covers.FindFile(path);
+                    Check(Covers.PictureStatus(path) == Text.PictureUploading, "upload progress");
+                    Settle(); Covers.FindFile(path);
+                    Check(Covers.PictureStatus(path) == Text.PictureBanned, "ban explanation");
+                    clock = clock.AddDays(1);
+                    Covers.FindFile(path); Settle(); Covers.FindFile(path);
+                    Check(attempts == 1, "permanent rejection does not retry");
+                    File.WriteAllBytes(path, new byte[] { 8, 8 });
+                    Check(Covers.PictureStatus(path) == Text.PictureWaiting, "replacement drops stale error");
+                    Covers.FindFile(path); Settle(); Covers.FindFile(path);
+                    Check(attempts == 2, "replacement can upload");
+                    Covers.UploadOwn = delegate(byte[] image, string slot)
+                    {
+                        Interlocked.Increment(ref attempts);
+                        return new Hosts.Uploaded { Url = "https://host/unbanned", Keep = TimeSpan.FromHours(6) };
+                    };
+                    Covers.RetryPicture(path);
+                    Covers.FindFile(path); Settle();
+                    Check(Covers.FindFile(path) == "https://host/unbanned" && attempts == 3, "manual retry after unban works without replacing the file");
+                    File.Delete(path);
+                    Check(Covers.PictureStatus(path) == "", "removed picture has no progress");
+                }
+                finally { Covers.UploadOwn = upload; File.Delete(path); }
+            });
         }
 
         static void TrackedPicture()
@@ -699,6 +901,7 @@ namespace Nowcast
                 Check(fake.Nick == Uri.EscapeDataString("Тест 😀 / &?#"), "UTF-8 percent-encoded nickname accompanies picked picture");
                 Hosts.Upload(new byte[] { 0x89, 0x50 });
                 Check(fake.Nick == null, "automatic player cover has no nickname");
+                Check(fake.CoverClient == PictureInstallation.Installation(), "automatic covers carry a backwards-compatible installation header");
                 Discord.UploadNick = null;
                 Hosts.UploadOwn(new byte[] { 0x89, 0x50 }, "fallback");
                 Check(fake.Nick == null, "picture still uploads when Discord username is unavailable");

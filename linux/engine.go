@@ -401,7 +401,7 @@ func (e *Engine) image(track *Track, settings *Settings) string {
 			return cover
 		}
 	}
-	if picked := e.covers.FindFile(settings.FallbackPicturePath()); picked != "" {
+	if picked := e.covers.FindFile(settings.FallbackPicturePath(), "fallback"); picked != "" {
 		return picked
 	}
 	return settings.Image

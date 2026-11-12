@@ -21,10 +21,20 @@ var version = "dev"
 const repo = "playsin333/discord-nowcast"
 
 func main() {
+	supportID := flag.Bool("support-id", false, "print the public installation ID for support")
 	showVersion := flag.Bool("version", false, "print the version")
 	diagnostics := flag.Bool("diagnostics", false, "print what the program sees: players, Discord, settings, log")
 	noTray := flag.Bool("no-tray", false, "run without the tray icon")
 	flag.Parse()
+	if *supportID {
+		id, err := publicInstallationID()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println(id)
+		return
+	}
 	if *showVersion {
 		fmt.Println("discord-nowcast " + version)
 		return
