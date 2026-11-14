@@ -19,6 +19,7 @@ namespace Nowcast
             var activity = Activity.BuildWithImage(track, null, settings, hasImage ? "preview" : null, lyric);
             string app = settings.ClientId != Settings.DefaultClientId ? Text.PreviewApplication
                 : track.Source.ClientId != null ? track.Source.Name : "Nowcast";
+            app = settings.ActivityNameOverride ?? app;
             var model = From(activity, app);
             int display = (int)activity["status_display_type"];
             model.Member = Text.PreviewMember + Prefix((int)activity["type"])
@@ -27,10 +28,10 @@ namespace Nowcast
             return model;
         }
 
-        public static StatusPreviewModel Own(string type, string title, string line2, int minutes, bool hasImage)
+        public static StatusPreviewModel Own(string type, string title, string line2, int minutes, bool hasImage, string activityName = null)
         {
-            var activity = Activity.Own(type, string.IsNullOrWhiteSpace(title) ? Text.PreviewOwnTitle : title, line2, 0, hasImage ? "preview" : null);
-            var model = From(activity, "Nowcast");
+            var activity = Activity.Own(type, string.IsNullOrWhiteSpace(title) ? Text.PreviewOwnTitle : title, line2, 0, hasImage ? "preview" : null, activityName);
+            var model = From(activity, activityName ?? "Nowcast");
             model.Extra = string.Format("{0:00}:{1:00}:00", minutes / 60, minutes % 60);
             model.Member = Text.PreviewMember + model.Header;
             model.Hint = Text.PreviewHint;

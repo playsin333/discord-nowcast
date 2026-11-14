@@ -24,6 +24,7 @@ namespace Nowcast
             var source = track.Source.Name;
             var artist = track.Artist != "" ? track.Artist : source;
             var activity = new Dictionary<string, object> { { "type", track.Source.IsVideo ? 3 : 2 }, { "instance", false } };
+            if (settings.ActivityNameOverride != null) activity["name"] = settings.ActivityNameOverride;
 
             // What the member list shows after "Listening to": status_display_type
             // 0 is the application name, 1 the state line, 2 the details line.
@@ -92,9 +93,10 @@ namespace Nowcast
         // application's name in the header) or "Playing" (Discord puts the name
         // under the header), the two lines, the time it has been going and the
         // picture; a click on the picture or the first line opens the nowcast server.
-        public static Dictionary<string, object> Own(string type, string title, string line2, long startedAt, string image)
+        public static Dictionary<string, object> Own(string type, string title, string line2, long startedAt, string image, string activityName = null)
         {
             var activity = new Dictionary<string, object> { { "type", type == "playing" ? 0 : type == "watching" ? 3 : 2 }, { "instance", false } };
+            if (activityName != null) activity["name"] = activityName;
             activity["buttons"] = new[] { new Dictionary<string, object> { { "label", Text.GetNowcast }, { "url", Program.DiscordInvite } } };
             activity["details"] = Limit(title);
             if (line2.Trim() != "") activity["state"] = Limit(line2);

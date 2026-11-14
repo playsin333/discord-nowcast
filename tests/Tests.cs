@@ -25,6 +25,7 @@ namespace Nowcast
             typeof(Log).GetField("FilePath").SetValue(null, Path.Combine(testFolder, "log.txt"));
             Run("release version checks", ReleaseChecks);
             Run("defaults", Defaults);
+            Run("activity names, persistence and old configs", ActivityNames);
             Run("cover setting from before", CoverSetting);
             Run("sources", SourcesByApp);
             Run("lines of a service", ServiceLines);
@@ -77,6 +78,40 @@ namespace Nowcast
             Check(!settings.HideAlbum, "album shown");
             Check(settings.CoverSource == "player" && settings.Buttons, "covers from the player and button on");
             Check(settings.InList == "source", "inList is source");
+            Check(settings.ActivityNameOverride == null, "registered application name by default");
+        }
+
+        static void ActivityNames()
+        {
+            var apply = typeof(Settings).GetMethod("Apply", BindingFlags.NonPublic | BindingFlags.Instance);
+            var settings = new Settings();
+            apply.Invoke(settings, new object[] { new Dictionary<string, object> { { "ownTitle", "kept" }, { "checkUpdates", true } } });
+            Check(settings.ActivityNameOverride == null && !settings.InvisibleActivityName, "old config keeps registered name");
+            var track = Track("SoundCloud.exe", "Artist", "Title");
+            Check(!Build(track, settings).ContainsKey("name"), "no name override sent by default");
+            settings.ActivityName = "  夜の音楽 🎵  ";
+            settings.Save();
+            var loaded = Settings.Load();
+            Check(loaded.ActivityNameOverride == "夜の音楽 🎵" && loaded.OwnTitle == "kept" && loaded.CheckUpdates, "custom name and existing settings survive restart");
+            Check((string)Build(track, loaded)["name"] == loaded.ActivityNameOverride, "music payload uses custom name");
+            var own = Activity.Own("listening", "My title", "line 2", 12345, null, loaded.ActivityNameOverride);
+            Check((string)own["name"] == loaded.ActivityNameOverride && (string)own["details"] == "My title", "own status uses custom name without replacing text");
+            Check(StatusPreviewModel.Own("listening", "My title", "", 0, false, loaded.ActivityNameOverride).Header.EndsWith(loaded.ActivityNameOverride), "own preview shows custom name");
+            loaded.InvisibleActivityName = true;
+            loaded.Save();
+            loaded = Settings.Load();
+            Check(loaded.ActivityName == settings.ActivityName && loaded.ActivityNameOverride == "\u2800\u2800", "invisible toggle preserves chosen name after restart");
+            Check((string)Build(track, loaded)["name"] == "\u2800\u2800", "music payload has invisible name");
+            Check(StatusPreviewModel.Music(track, loaded, false, null).Header.EndsWith("\u2800\u2800"), "music preview has invisible name");
+            loaded.InvisibleActivityName = false;
+            Check(loaded.ActivityNameOverride == "夜の音楽 🎵", "turning off invisibility restores custom name");
+            loaded.ActivityName = "  ";
+            Check(loaded.ActivityNameOverride == null && !Build(track, loaded).ContainsKey("name"), "clearing restores registered name");
+            loaded.ActivityName = new string('a', 127) + "🎵";
+            Check(loaded.ActivityNameOverride.Length == 127 && !char.IsHighSurrogate(loaded.ActivityNameOverride[126]), "name truncation keeps Unicode pairs whole");
+            loaded.ActivityName = "月";
+            Check(loaded.ActivityNameOverride == "月\u2800", "single character keeps protocol minimum");
+            File.Delete(Settings.FilePath);
         }
 
         static void ReleaseChecks()

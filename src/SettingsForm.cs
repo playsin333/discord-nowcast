@@ -27,6 +27,8 @@ namespace Nowcast
         string sourcesKey;
         bool previewExpanded, moreExpanded;
         readonly ComboBox inList = Choices();
+        readonly TextBox activityName = OwnForm.Line();
+        readonly Theme.CheckBox invisibleName = new Theme.CheckBox { Text = Strings.InvisibleActivityName };
         readonly ComboBox coverSource = Choices();
         readonly Label fallbackLabel = Note(Strings.FallbackLabel);
         readonly PicturePicker fallback = new PicturePicker(Settings.FallbackPicturePath, "Fallback picture");
@@ -76,6 +78,15 @@ namespace Nowcast
             layout.Controls.Add(previewToggle);
             layout.Controls.Add(preview);
             layout.Controls.Add(Heading(Strings.StatusHeading));
+            layout.Controls.Add(Note(Strings.ActivityNameLabel));
+            layout.Controls.Add(activityName);
+            activityName.MaxLength = 128;
+            layout.Controls.Add(invisibleName);
+            layout.Controls.Add(ActionButton(Strings.ApplyActivityName, delegate
+            {
+                Change(s => { s.ActivityName = activityName.Text; s.InvisibleActivityName = invisibleName.Checked; });
+            }));
+            layout.Controls.Add(Note(Strings.ActivityNameNote));
             layout.Controls.Add(Note(Strings.InListLabel));
             layout.Controls.Add(inList);
             layout.Controls.Add(Note(Strings.CoverLabel));
@@ -126,6 +137,7 @@ namespace Nowcast
             Controls.Add(layout);
 
             Fill();
+            invisibleName.CheckedChanged += delegate { activityName.Enabled = !invisibleName.Checked; };
             previewToggle.Click += delegate
             {
                 previewExpanded = !previewExpanded;
@@ -172,6 +184,9 @@ namespace Nowcast
             isLoading = true;
             var settings = Settings.Load();
             displayedSettings = settings;
+            activityName.Text = settings.ActivityName;
+            invisibleName.Checked = settings.InvisibleActivityName;
+            activityName.Enabled = !invisibleName.Checked;
             settingsWritten = SettingsStamp();
             var index = Array.IndexOf(inListValues, settings.InList);
             inList.SelectedIndex = index >= 0 ? index : 0;
@@ -298,7 +313,7 @@ namespace Nowcast
             if (displayedSettings.ShowsOwn)
             {
                 bool hasImage = File.Exists(Settings.OwnPicturePath);
-                preview.Render(StatusPreviewModel.Own(displayedSettings.OwnType, displayedSettings.OwnTitle, displayedSettings.OwnLine2, displayedSettings.OwnMinutes, hasImage), hasImage ? Settings.OwnPicturePath : null, null);
+                preview.Render(StatusPreviewModel.Own(displayedSettings.OwnType, displayedSettings.OwnTitle, displayedSettings.OwnLine2, displayedSettings.OwnMinutes, hasImage, displayedSettings.ActivityNameOverride), hasImage ? Settings.OwnPicturePath : null, null);
                 return;
             }
             var snapshot = engine.Preview;

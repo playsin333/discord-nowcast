@@ -33,6 +33,23 @@ namespace Nowcast
         public const int MaxOwnMinutes = 100 * 60;
 
         public string ClientId = DefaultClientId;
+        // Empty keeps the registered name (including each music service's name).
+        public string ActivityName = "";
+        public bool InvisibleActivityName = false;
+        public string ActivityNameOverride
+        {
+            get
+            {
+                if (InvisibleActivityName) return "\u2800\u2800";
+                var name = (ActivityName ?? "").Trim();
+                if (name.Length == 0) return null;
+                if (name.Length > 128)
+                    name = name.Substring(0, char.IsHighSurrogate(name[127]) ? 127 : 128);
+                // As with details/state, keep the protocol's minimum length.
+                if (name.Length < 2) name += "\u2800";
+                return name;
+            }
+        }
         // What the member list shows after "Listening to": source, artist, title, app.
         public string InList = "source";
         public bool ShowPaused = false;
@@ -92,6 +109,8 @@ namespace Nowcast
             var lines = new[]
             {
                 "  \"clientId\": " + json.Serialize(ClientId),
+                "  \"activityName\": " + json.Serialize(ActivityName),
+                "  \"invisibleActivityName\": " + json.Serialize(InvisibleActivityName),
                 "  \"inList\": " + json.Serialize(InList),
                 "  \"showPaused\": " + json.Serialize(ShowPaused),
                 "  \"coverSource\": " + json.Serialize(CoverSource),
@@ -178,6 +197,8 @@ namespace Nowcast
 
         void Apply(Dictionary<string, object> values)
         {
+            ActivityName = Get<string>(values, "activityName") ?? ActivityName;
+            InvisibleActivityName = Get(values, "invisibleActivityName", InvisibleActivityName);
             var clientId = Get<string>(values, "clientId");
             if (clientId != null && clientId.Trim() != "") ClientId = clientId.Trim();
             if (ClientId == "1562901782579912804") ClientId = DefaultClientId;

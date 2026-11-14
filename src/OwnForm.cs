@@ -179,7 +179,7 @@ namespace Nowcast
             bool hasImage = System.IO.File.Exists(Settings.OwnPicturePath);
             string value = typeValues[Math.Max(0, type.SelectedIndex)];
             int total = Math.Min(Settings.MaxOwnMinutes, (int)hours.Value * 60 + (int)minutes.Value);
-            preview.Render(StatusPreviewModel.Own(value, title.Text, line2.Text, total, hasImage), hasImage ? Settings.OwnPicturePath : null, null);
+            preview.Render(StatusPreviewModel.Own(value, title.Text, line2.Text, total, hasImage, Settings.Load().ActivityNameOverride), hasImage ? Settings.OwnPicturePath : null, null);
         }
 
         protected override void Dispose(bool disposing)
@@ -193,7 +193,7 @@ namespace Nowcast
             return new Label { Text = text, AutoSize = true, Margin = new Padding(0, 10, 0, 3) };
         }
 
-        static TextBox Line()
+        internal static TextBox Line()
         {
             return new TextBox
             {

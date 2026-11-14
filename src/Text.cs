@@ -45,6 +45,10 @@ namespace Nowcast
             "Picture not uploading? Contact support in Discord.");
         public static readonly string Autostart = T("Запускать вместе с Windows", "Start with Windows");
         public static readonly string Settings = T("Настройки…", "Settings…");
+        public static readonly string ActivityNameLabel = T("Имя приложения в статусе", "Application name in status");
+        public static readonly string InvisibleActivityName = T("Невидимое имя", "Invisible name");
+        public static readonly string ApplyActivityName = T("Применить имя", "Apply name");
+        public static readonly string ActivityNameNote = T("Пустое поле — обычное имя приложения. После применения подожди несколько секунд. Слово «Слушает» или «Смотрит» может остаться.", "Leave empty for the usual application name. Allow a few seconds after applying. Listening to or Watching may remain visible.");
         public static readonly string OwnStatus = T("Свой статус…", "Own status…");
 
         public static readonly string Donate = T("Донат", "Donate");
@@ -67,9 +71,9 @@ namespace Nowcast
         public static readonly string GetNowcast = T("Получить Nowcast", "Get Nowcast");
         public static readonly string OwnNote = T("Текст отправляется только в Discord, без фильтра слов. Выбранные картинки загружаются на сервер Nowcast и могут быть удалены администратором. Кнопка «Получить Nowcast» открывает наш Discord-сервер.", "Text goes only to Discord, without a word filter. Selected pictures upload to the Nowcast server and may be removed by the administrator. Get Nowcast opens our Discord server.");
         public static readonly string OwnTypeLabel = T("Тип:", "Type:");
-        public static readonly string OwnListening = T("Слушает nowcast", "Listening to nowcast");
-        public static readonly string OwnWatching = T("Смотрит nowcast", "Watching nowcast");
-        public static readonly string OwnPlaying = T("Играет в nowcast", "Playing nowcast");
+        public static readonly string OwnListening = T("Слушает", "Listening");
+        public static readonly string OwnWatching = T("Смотрит", "Watching");
+        public static readonly string OwnPlaying = T("Играет", "Playing");
         public static readonly string OwnTitleLabel = T("Строка 1:", "Line 1:");
         public static readonly string OwnLine2Label = T("Строка 2 (необязательно):", "Line 2 (optional):");
         public static readonly string OwnPictureLabel = T("Картинка:", "Picture:");

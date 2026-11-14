@@ -89,6 +89,7 @@ Most of these are in the settings window. All of them live in `config.json` in `
 
 | Setting | What it means |
 | --- | --- |
+| `activityName`, `invisibleActivityName` | Windows: override or hide the application name in the status. Enter a name or enable Invisible name in Settings, then click Apply name. An empty name with hiding off keeps the usual service/Nowcast name. Hiding preserves your chosen text. The choice survives restarts; Discord may still show Listening to or Watching. The name is sent only to Discord |
 | `clientId` | the Discord application whose name follows "Listening to". Yandex Music, Spotify, SoundCloud, YouTube, YouTube Music, Twitch, VK Music, Apple Music and Telegram have their own; other players share a general one. To always use your own name, create an app at [discord.com/developers/applications](https://discord.com/developers/applications) (**New Application**) and paste its **Application ID** here |
 | `inList` | what the member list shows after "Listening to": `source` where it plays (default; for a service with a Discord application of its own the status lines are the title and the artist, the source is in the "Listening to SoundCloud" header), `artist`, `title`, or `app` for the application name |
 | `showPaused` | `true` keeps the status on pause, marked as paused |

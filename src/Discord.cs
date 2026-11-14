@@ -42,6 +42,7 @@ namespace Nowcast
 
         // The application the connection speaks for.
         public string ClientId { get; private set; }
+        internal string ActivityName { get; private set; }
         internal static string UploadNick;
 
         // False once Discord has closed its end: it quit or restarted. Without
@@ -56,8 +57,9 @@ namespace Nowcast
             }
         }
 
-        public bool Connect(string clientId)
+        public bool Connect(string clientId, string activityName = null)
         {
+            ActivityName = activityName;
             // Only the pipes that exist: waiting on absent ones would hold up
             // the whole tick every few seconds while Discord is closed.
             var pipes = PipeNames();

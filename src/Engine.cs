@@ -213,15 +213,15 @@ namespace Nowcast
             var clientId = isOwn ? settings.OwnClientIdFor()
                 : track != null ? settings.ClientIdFor(track.Source)
                 : (discord.ClientId ?? settings.ClientId);
-            if (discord.IsConnected && discord.ClientId != clientId)
+            if (discord.IsConnected && (discord.ClientId != clientId || discord.ActivityName != settings.ActivityNameOverride))
             {
-                Log.Write("Switching to the Discord application of " + (isOwn ? "one's own status" : track.Source.Name));
+                Log.Write("Switching Discord activity connection: " + (isOwn ? "one's own status" : track != null ? track.Source.Name : "settings changed"));
                 discord.Dispose();
                 nextConnect = DateTime.Now;
             }
             if (!discord.IsConnected && DateTime.Now >= nextConnect)
             {
-                if (discord.Connect(clientId))
+                if (discord.Connect(clientId, settings.ActivityNameOverride))
                 {
                     sentKey = null;
                     // A Discord that is still starting up can drop the first
@@ -336,11 +336,11 @@ namespace Nowcast
             if (isResend) resendAt = null;
             try
             {
-                var activity = Activity.Own(settings.OwnType, title, settings.OwnLine2, ownStart, image);
+                var activity = Activity.Own(settings.OwnType, title, settings.OwnLine2, ownStart, image, settings.ActivityNameOverride);
                 if (discord.SetActivity(activity) != null && Activity.UseLinks)
                 {
                     Activity.UseLinks = false;
-                    discord.SetActivity(Activity.Own(settings.OwnType, title, settings.OwnLine2, ownStart, image));
+                    discord.SetActivity(Activity.Own(settings.OwnType, title, settings.OwnLine2, ownStart, image, settings.ActivityNameOverride));
                 }
                 Log.Write("Status: own, " + title + (image != null ? "" : " (no picture)"));
                 shownKey = null;
