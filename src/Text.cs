@@ -135,7 +135,7 @@ namespace Nowcast
         public static readonly string LyricsOption = T("Текст песни в статусе (строка, которую поют)", "Lyrics in the status (the line being sung)");
         public static readonly string SourcesNote = T("Снимите галочку, чтобы скрыть приложение в статусе.", "Clear a box to hide that app from the status.");
         public static readonly string ProgramHeading = T("Программа", "The program");
-        public static readonly string CheckUpdatesOption = T("При запуске открывать GitHub, если есть обновление", "Open GitHub on startup when an update is available");
+        public static readonly string CheckUpdatesOption = T("Показывать объявления и открывать GitHub при обновлении", "Show announcements and open GitHub when an update is available");
         public static readonly string Advanced = T("Дополнительно (config.json)", "Advanced (config.json)");
         public static readonly string Close = T("Закрыть", "Close");
         public static readonly string OpenLog = T("Открыть лог", "Open log");

@@ -94,6 +94,7 @@ namespace Nowcast
             {
                 firstCheck.Stop();
                 CheckUpdates();
+                CheckAnnouncement();
             };
             firstCheck.Start();
         }
@@ -181,6 +182,18 @@ namespace Nowcast
                 settings.Save();
             };
             sourcesItem.DropDownItems.Add(item);
+        }
+
+        async void CheckAnnouncement()
+        {
+            if (!engine.Settings.CheckUpdates) return;
+            try
+            {
+                string json = await Announcements.Fetch();
+                if (!closing && engine.Settings.CheckUpdates)
+                    Announcements.Deliver(json, System.IO.Path.Combine(Log.Folder, "announcement-id"), Say);
+            }
+            catch (Exception e) { Log.Write("Announcement unavailable: " + e.GetType().Name); }
         }
 
         void CheckUpdates()

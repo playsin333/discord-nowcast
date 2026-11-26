@@ -67,6 +67,7 @@ func trayReady(engine *Engine) {
 	engine.OnChange(refresh)
 	refresh()
 
+	go checkAnnouncement()
 	var newer *release
 	go checkUpdates(func(found *release) {
 		newer = found

@@ -20,6 +20,10 @@ Yandex Music, Spotify, SoundCloud, VK, Telegram, YouTube in a browser, AIMP, loc
 
 </div>
 
+## Maintainer announcements
+
+Version 1.7.2 and later checks [announcement.json](announcement.json) on `main` ten seconds after startup. To publish a desktop notification, commit a plain-text message (up to 240 characters) and a new, increasing integer ID, for example `{"id": 1, "message": "Your announcement"}`. Clear the message to withdraw it. Clients remember the last ID delivered on each device and only show the current message. GitHub may cache the feed for a few minutes. Desktop notification preferences apply. Disable the feature together with update checks using `"checkUpdates": false`.
+
 ## What you get
 
 Your profile and the server member list show **Listening to SoundCloud**, **Listening to Yandex Music**, and for video **Watching YouTube** or **Watching Twitch**:

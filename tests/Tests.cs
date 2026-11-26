@@ -24,6 +24,7 @@ namespace Nowcast
             typeof(Log).GetField("Folder").SetValue(null, testFolder);
             typeof(Log).GetField("FilePath").SetValue(null, Path.Combine(testFolder, "log.txt"));
             Run("release version checks", ReleaseChecks);
+            Run("announcements delivered once per id", AnnouncementChecks);
             Run("defaults", Defaults);
             Run("activity names, persistence and old configs", ActivityNames);
             Run("cover setting from before", CoverSetting);
@@ -112,6 +113,19 @@ namespace Nowcast
             loaded.ActivityName = "月";
             Check(loaded.ActivityNameOverride == "月\u2800", "single character keeps protocol minimum");
             File.Delete(Settings.FilePath);
+        }
+
+        static void AnnouncementChecks()
+        {
+            var path = Path.Combine(Log.Folder, "announcement-id");
+            var messages = new List<string>();
+            const string first = "{\"id\":1,\"message\":\"First\"}";
+            Announcements.Deliver("{\"id\":0,\"message\":\"\"}", path, messages.Add);
+            Announcements.Deliver(first, path, messages.Add);
+            Announcements.Deliver(first, path, messages.Add);
+            Announcements.Deliver("{\"id\":2,\"message\":\"Second\"}", path, messages.Add);
+            Announcements.Deliver(first, path, messages.Add);
+            Check(messages.SequenceEqual(new[] { "First", "Second" }), "empty, duplicate and older messages ignored");
         }
 
         static void ReleaseChecks()
