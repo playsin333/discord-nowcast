@@ -112,6 +112,19 @@ namespace Nowcast
             return activity;
         }
 
+        // Generic foreground desktop activity. Window titles expose useful
+        // project/document names for apps such as Photoshop and FL Studio.
+        public static Dictionary<string, object> Desktop(DesktopApp app, long startedAt)
+        {
+            var activity = new Dictionary<string, object> { { "type", 0 }, { "instance", false } };
+            activity["name"] = app.Name;
+            activity["details"] = Limit(app.Title);
+            activity["status_display_type"] = 0;
+            activity["timestamps"] = new Dictionary<string, object> { { "start", startedAt } };
+            if (app.Image != null) activity["assets"] = new Dictionary<string, object> { { "large_image", app.Image }, { "large_text", app.Name } };
+            return activity;
+        }
+
         // The picture for the status: the track's cover, or until it comes (or
         // when there is none) the picture picked for that, or the settings'
         // link; null for none. With "picture" the picked one on every track,

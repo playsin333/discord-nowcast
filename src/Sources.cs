@@ -59,6 +59,7 @@ namespace Nowcast
             new Rule(@"youtube.?music", "YouTube Music", "https://music.youtube.com/search?q=", "1568314503563575306"),
             new Rule(@"youtube", "YouTube", "https://www.youtube.com/results?search_query=", "1568314610195636346", true),
             new Rule(@"twitch", "Twitch", "https://www.twitch.tv/search?term=", "1568314750859739188", true),
+            new Rule(@"(^|[\s/|—–-])(?:x|twitter)(?:$|[\s/|—–-])|x\.com|twitter\.com", "X", "https://x.com/search?q=", null, true),
             new Rule(@"telegram", "Telegram", null, "1568314861254086716"),
             new Rule(@"vk.?music|vk музык|vkontakte|вконтакте|\bvk\b|\bвк\b", Text.Ru ? "VK Музыка" : "VK Music", "https://vk.com/audio?q=", "1568314940681359361"),
             new Rule(@"applemusic|apple music|itunes", "Apple Music", "https://music.apple.com/search?term=", "1568315041386602636"),
@@ -119,15 +120,78 @@ namespace Nowcast
             };
         }
 
-        // A browser reports itself, not the site. The window shows the site in
-        // its title, "Video - YouTube - Google Chrome", but only for the tab in
-        // front, so this finds the window whose title holds the track and looks
-        // for a site in the rest of it: the track's own words could name one.
-        public static SourceInfo FromWindows(string title, string artist)
+        public static string BrowserFromProcess(string processName)
         {
-            foreach (var window in WindowTitles.Read())
+            var process = (processName ?? "").ToLowerInvariant();
+            if (process == "firefox") return "Firefox";
+            if (process == "chrome") return "Chrome";
+            if (process == "msedge") return "Edge";
+            if (process == "browser" || process == "yandexbrowser") return Text.Ru ? "Яндекс Браузер" : "Yandex Browser";
+            if (process == "opera") return "Opera";
+            if (process == "vivaldi") return "Vivaldi";
+            if (process == "brave") return "Brave";
+            if (process == "thorium") return "Thorium";
+            return null;
+        }
+
+        // Return a normalized service name, or the host for a site we do not
+        // have a built-in service rule for.
+        public static string SiteFromAddress(string address)
+        {
+            if (string.IsNullOrWhiteSpace(address)) return null;
+            Uri uri;
+            var candidate = address.Trim();
+            var isWebAddress = Uri.TryCreate(candidate, UriKind.Absolute, out uri)
+                && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+            if (!isWebAddress)
             {
-                var rest = window;
+                if (candidate.Contains("://") || candidate.IndexOfAny(new[] { ' ', '\t', '\r', '\n' }) >= 0 || candidate.IndexOf('.') < 0) return null;
+                if (!Uri.TryCreate("https://" + candidate, UriKind.Absolute, out uri)) return null;
+            }
+            if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) return null;
+            return SiteFromHost(uri.IdnHost);
+        }
+
+        public static string SiteFromHost(string host)
+        {
+            if (string.IsNullOrWhiteSpace(host)) return null;
+            var value = host.Trim().TrimEnd('.').ToLowerInvariant();
+            if (value.StartsWith("www.")) value = value.Substring(4);
+            if (value == "music.youtube.com" || value.EndsWith(".music.youtube.com")) return "YouTube Music";
+            if (value == "youtube.com" || value.EndsWith(".youtube.com") || value == "youtu.be") return "YouTube";
+            if (value == "soundcloud.com" || value.EndsWith(".soundcloud.com")) return "SoundCloud";
+            if (value == "spotify.com" || value.EndsWith(".spotify.com") || value == "spotify.link") return "Spotify";
+            if (value == "twitch.tv" || value.EndsWith(".twitch.tv")) return "Twitch";
+            if (value == "x.com" || value.EndsWith(".x.com") || value == "twitter.com" || value.EndsWith(".twitter.com")) return "X";
+            if (value == "music.apple.com" || value.EndsWith(".music.apple.com")) return "Apple Music";
+            if (value == "vk.com" || value.EndsWith(".vk.com")) return Text.Ru ? "VK Музыка" : "VK Music";
+            if (value == "web.telegram.org" || value == "telegram.org" || value.EndsWith(".telegram.org")) return "Telegram";
+            return value;
+        }
+
+        static SourceInfo SiteInfo(string name)
+        {
+            Rule rule = null;
+            foreach (var candidate in rules)
+                if (!candidate.IsBrowser && string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase)) { rule = candidate; break; }
+            if (rule != null) return Info(rule.Name, rule);
+            return new SourceInfo
+            {
+                Name = name,
+                Search = name != null && name.IndexOf('.') >= 0 ? "https://" + name + "/" : null,
+            };
+        }
+
+        // A browser reports itself, not the site. Match the media title to the
+        // visible browser window, then identify its active tab from the local
+        // address bar. Known sites keep their rich service names; other hosts
+        // become selectable sites too.
+        public static SourceInfo FromWindows(string browser, string title, string artist)
+        {
+            foreach (var window in WindowTitles.ReadBrowserWindows())
+            {
+                if (!string.Equals(window.Browser, browser, StringComparison.OrdinalIgnoreCase)) continue;
+                var rest = window.Title;
                 var holds = false;
                 foreach (var part in new[] { title, artist })
                 {
@@ -136,22 +200,25 @@ namespace Nowcast
                     holds = true;
                 }
                 if (!holds) continue;
+                // The active URL is authoritative when it is available. Only
+                // fall back to title heuristics for browsers that hide it.
+                if (window.Site != null) return SiteInfo(window.Site);
                 // A playing SoundCloud tab is titled "▶ Title by Artist", without the site's name.
                 if (title.Length >= 2 && artist.Length >= 2 &&
-                    window.IndexOf(title + " by " + artist, StringComparison.OrdinalIgnoreCase) >= 0)
+                    window.Title.IndexOf(title + " by " + artist, StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     var soundCloud = Match("soundcloud");
                     return Info(soundCloud.Name, soundCloud);
                 }
                 // The Spotify web player is titled "Title • Artist", without the site's name either.
                 if (title.Length >= 2 && artist.Length >= 2 &&
-                    window.IndexOf(title + " • " + artist, StringComparison.OrdinalIgnoreCase) >= 0)
+                    window.Title.IndexOf(title + " • " + artist, StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     var spotify = Match("spotify");
                     return Info(spotify.Name, spotify);
                 }
                 var rule = Match(rest);
-                if (rule != null && rule.ClientId != null) return Info(rule.Name, rule);
+                if (rule != null && !rule.IsBrowser) return Info(rule.Name, rule);
             }
             return null;
         }

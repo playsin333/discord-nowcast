@@ -48,7 +48,7 @@ namespace Nowcast
         public static readonly string ActivityNameLabel = T("Имя приложения в статусе", "Application name in status");
         public static readonly string InvisibleActivityName = T("Невидимое имя", "Invisible name");
         public static readonly string ApplyActivityName = T("Применить имя", "Apply name");
-        public static readonly string ActivityNameNote = T("Пустое поле — обычное имя приложения. После применения подожди несколько секунд. Слово «Слушает» или «Смотрит» может остаться.", "Leave empty for the usual application name. Allow a few seconds after applying. Listening to or Watching may remain visible.");
+        public static readonly string ActivityNameNote = T("Пустое поле — обычное имя. Изменения сохраняются автоматически; обновление статуса займёт несколько секунд.", "Leave empty for the usual name. Changes save automatically; the status may take a few seconds to update.");
         public static readonly string OwnStatus = T("Свой статус…", "Own status…");
 
         public static readonly string Donate = T("Донат", "Donate");
@@ -136,7 +136,7 @@ namespace Nowcast
         public static readonly string SourcesNote = T("Снимите галочку, чтобы скрыть приложение в статусе.", "Clear a box to hide that app from the status.");
         public static readonly string ProgramHeading = T("Программа", "The program");
         public static readonly string CheckUpdatesOption = T("Показывать объявления и открывать GitHub при обновлении", "Show announcements and open GitHub when an update is available");
-        public static readonly string Advanced = T("Дополнительно (config.json)", "Advanced (config.json)");
+        public static readonly string Advanced = T("Для опытных пользователей…", "Advanced options…");
         public static readonly string Close = T("Закрыть", "Close");
         public static readonly string OpenLog = T("Открыть лог", "Open log");
         public static readonly string CopyDiagnostics = T("Скопировать диагностику", "Copy diagnostics");

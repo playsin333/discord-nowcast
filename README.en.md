@@ -71,6 +71,8 @@ If that does not help, run discord-nowcast as administrator too: right-click the
 
 The raven by the clock, at the bottom right of the screen, is how you control it. Only you see it; nobody in Discord does. Hover for the current track, click for the menu:
 
+The main window opens when Nowcast starts. Home, apps, websites, settings and custom status are all in that window. On the Websites page, check which sites Nowcast may show on Discord: YouTube and SoundCloud are on by default; other sites appear when you open a tab and stay off until you choose them. Closing the window minimizes Nowcast to the tray; double-click the tray icon to reopen it. Add an app from the open windows list or choose its `.exe` on the Apps page.
+
 | Item | What it does |
 | --- | --- |
 | Hide status for an hour | clears the status for an hour; click again to bring it back |

@@ -1,4 +1,5 @@
 discord-nowcast.exe
+discord-nowcast-*.exe
 CLAUDE.local.md
 dist/
 __pycache__/
