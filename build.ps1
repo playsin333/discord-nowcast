@@ -3,9 +3,12 @@
 #
 #   powershell -ExecutionPolicy Bypass -File build.ps1
 
+param([string]$OutputName = 'discord-nowcast.exe')
+
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $framework = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
+$wpf = Join-Path $framework 'WPF'
 $csc = Join-Path $framework 'csc.exe'
 
 $references = @(
@@ -13,8 +16,9 @@ $references = @(
     'System.Net.Http.dll', 'System.Web.Extensions.dll',
     'System.Runtime.dll', 'System.Runtime.WindowsRuntime.dll'
 ) | ForEach-Object { '-r:' + (Join-Path $framework $_) }
+$references += @('UIAutomationClient.dll', 'UIAutomationTypes.dll') | ForEach-Object { '-r:' + (Join-Path $wpf $_) }
 
-$out = Join-Path $here 'discord-nowcast.exe'
+$out = Join-Path $here $OutputName
 & $csc -nologo -target:winexe -optimize+ -codepage:65001 `
     "-out:$out" `
     "-win32icon:$(Join-Path $here 'assets\icon.ico')" `

@@ -18,6 +18,9 @@ namespace Nowcast
         readonly Button previewToggle = Flat(Strings.ShowPreview, false);
         readonly Timer previewTimer = new Timer { Interval = 1000 };
         bool previewExpanded;
+        bool embedded;
+        Action closePage;
+        FlowLayoutPanel body;
         readonly Theme.CheckBox on = new Theme.CheckBox { Text = Strings.OwnOn };
         readonly ComboBox type = SettingsForm.Choices();
         readonly TextBox title = Line();
@@ -30,8 +33,9 @@ namespace Nowcast
         readonly Timer typing = new Timer { Interval = 700 };
         bool isLoading;
 
-        public OwnForm()
+        public OwnForm(Action closePage = null)
         {
+            this.closePage = closePage;
             Text = "discord-nowcast";
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             Font = SystemFonts.MessageBoxFont;
@@ -49,6 +53,7 @@ namespace Nowcast
             ForeColor = Theme.Text;
 
             var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false };
+            body = layout;
             layout.Controls.Add(SettingsForm.Heading(Strings.OwnStatus.TrimEnd('…')));
             layout.Controls.Add(previewToggle);
             layout.Controls.Add(preview);
@@ -74,10 +79,10 @@ namespace Nowcast
             timeRow.Controls.Add(Unit(Strings.Minutes));
             layout.Controls.Add(timeRow);
 
-            var close = Flat(Strings.Close, true);
+            var close = Flat(closePage == null ? Strings.Close : (Strings.Ru ? "Назад" : "Back"), true);
             close.Anchor = AnchorStyles.Right;
             close.Margin = new Padding(0, 12, 0, 0);
-            close.Click += delegate { Close(); };
+            close.Click += delegate { if (this.closePage != null) this.closePage(); else Close(); };
             CancelButton = close;
             layout.Controls.Add(close);
             Controls.Add(layout);
@@ -88,7 +93,7 @@ namespace Nowcast
                 previewExpanded = !previewExpanded;
                 preview.Visible = previewExpanded;
                 previewToggle.Text = previewExpanded ? Strings.HidePreview : Strings.ShowPreview;
-                RefreshPreview(); SettingsForm.FitToScreen(this, false);
+                RefreshPreview(); FitOrLayout(false);
             };
             previewTimer.Tick += delegate { RefreshPreview(); };
             VisibleChanged += delegate { previewTimer.Enabled = Visible; if (Visible) RefreshPreview(); };
@@ -146,7 +151,7 @@ namespace Nowcast
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            SettingsForm.FitToScreen(this);
+            if (!embedded) SettingsForm.FitToScreen(this);
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -161,6 +166,24 @@ namespace Nowcast
             Show();
             if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
             Activate();
+        }
+
+        public void PrepareEmbedded(Action done)
+        {
+            embedded = true;
+            closePage = done;
+            TopLevel = false;
+            FormBorderStyle = FormBorderStyle.None;
+            AutoSize = false;
+            Dock = DockStyle.Fill;
+            body.Dock = DockStyle.Top;
+            body.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        }
+
+        void FitOrLayout(bool center)
+        {
+            if (embedded) PerformLayout();
+            else SettingsForm.FitToScreen(this, center);
         }
 
         // From the file as it is now, so edits made by hand are kept.

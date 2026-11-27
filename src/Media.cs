@@ -90,7 +90,15 @@ namespace Nowcast
                         IsCurrent = app == currentApp,
                         Thumbnail = WinRT.Get(properties, propertiesType, "Thumbnail"),
                     };
-                    if (track.Source.IsBrowser) track.Source = Site(app, artist, title) ?? track.Source;
+                    if (track.Source.IsBrowser)
+                    {
+                        var browser = track.Source;
+                        var site = Site(app, browser.Name, artist, title);
+                        // Browser sites are always filtered through the user's
+                        // per-browser allow-list; newly discovered hosts start off.
+                        if (!settings.BrowserSiteAllowed(browser.Name, site == null ? null : site.Name)) continue;
+                        track.Source = site ?? browser;
+                    }
                     ReadTimeline(session, track);
                     Repair(track);
                     list.Add(track);
@@ -109,14 +117,14 @@ namespace Nowcast
         // Not found yet: the windows are looked through again at most every 5 s.
         static readonly Dictionary<string, DateTime> lookAgainAt = new Dictionary<string, DateTime>();
 
-        static SourceInfo Site(string app, string artist, string title)
+        static SourceInfo Site(string app, string browser, string artist, string title)
         {
             var key = app + "|" + artist + "|" + title;
             SourceInfo site;
             if (sites.TryGetValue(key, out site)) return site;
             DateTime at;
             if (lookAgainAt.TryGetValue(key, out at) && DateTime.Now < at) return null;
-            site = Sources.FromWindows(title, artist);
+            site = Sources.FromWindows(browser, title, artist);
             if (sites.Count > 100) sites.Clear();
             if (lookAgainAt.Count > 100) lookAgainAt.Clear();
             if (site != null) sites[key] = site;

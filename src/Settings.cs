@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Web.Script.Serialization;
 
@@ -78,7 +79,13 @@ namespace Nowcast
         public string OwnLine2 = "";
         public int OwnMinutes = 0;
         public List<string> Hide = new List<string>();
+        // Executable paths selected by the user, mapped to their Discord name.
+        public Dictionary<string, string> Executables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, string> Names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // A browser's saved list contains sites allowed for that browser. A
+        // missing entry uses the first-run defaults below.
+        public Dictionary<string, List<string>> BrowserSiteFilters = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        public static readonly string[] DefaultBrowserSites = { "YouTube", "SoundCloud" };
 
         public static Settings Load()
         {
@@ -126,7 +133,9 @@ namespace Nowcast
                 "  \"ownLine2\": " + json.Serialize(OwnLine2),
                 "  \"ownMinutes\": " + json.Serialize(OwnMinutes),
                 "  \"hide\": " + json.Serialize(Hide),
+                "  \"executables\": {" + string.Join(", ", Executables.Select(pair => json.Serialize(pair.Key) + ": " + json.Serialize(pair.Value))) + "}",
                 "  \"names\": {" + string.Join(", ", names) + "}",
+                "  \"browserSiteFilters\": " + json.Serialize(BrowserSiteFilters),
             };
             Directory.CreateDirectory(Log.Folder);
             File.WriteAllText(FilePath, "{\r\n" + string.Join(",\r\n", lines) + "\r\n}\r\n", new UTF8Encoding(false));
@@ -161,6 +170,18 @@ namespace Nowcast
                 if (source.IndexOf(word, StringComparison.OrdinalIgnoreCase) >= 0) return true;
             }
             return false;
+        }
+
+        public List<string> BrowserSitesFor(string browser)
+        {
+            List<string> allowed;
+            if (BrowserSiteFilters.TryGetValue(browser, out allowed)) return new List<string>(allowed);
+            return new List<string>(DefaultBrowserSites);
+        }
+
+        public bool BrowserSiteAllowed(string browser, string site)
+        {
+            return site != null && BrowserSitesFor(browser).Contains(site, StringComparer.OrdinalIgnoreCase);
         }
 
         // Each app playing now, plus the hidden ones, so they can come back.
@@ -229,12 +250,29 @@ namespace Nowcast
                     if (word is string && (string)word != "") Hide.Add((string)word);
                 }
             }
+            var executables = Get<Dictionary<string, object>>(values, "executables");
+            if (executables != null)
+                foreach (var app in executables)
+                    if (app.Value is string && !string.IsNullOrWhiteSpace(app.Key)) Executables[app.Key] = (string)app.Value;
             var names = Get<Dictionary<string, object>>(values, "names");
             if (names != null)
             {
                 foreach (var pair in names)
                 {
                     if (pair.Value is string) Names[pair.Key] = (string)pair.Value;
+                }
+            }
+            var browserFilters = Get<Dictionary<string, object>>(values, "browserSiteFilters");
+            if (browserFilters != null)
+            {
+                foreach (var pair in browserFilters)
+                {
+                    var valuesList = pair.Value as ArrayList;
+                    if (valuesList == null || string.IsNullOrWhiteSpace(pair.Key)) continue;
+                    var allowed = new List<string>();
+                    foreach (var value in valuesList)
+                        if (value is string && !string.IsNullOrWhiteSpace((string)value)) allowed.Add((string)value);
+                    BrowserSiteFilters[pair.Key] = allowed;
                 }
             }
         }

@@ -42,6 +42,8 @@ namespace Nowcast
         // One's own status as last set, and when it started by its time.
         string ownKey;
         long ownStart;
+        string desktopKey;
+        long desktopStart;
         // The track last seen and when, to see how long its status took.
         string seenKey;
         DateTime seenAt;
@@ -78,6 +80,7 @@ namespace Nowcast
             // A cover that is done does not wait for the next round.
             Covers.Ready += delegate { wake.Set(); };
             Lyrics.Ready += delegate { wake.Set(); };
+            AppIcon.Ready += delegate { wake.Set(); };
         }
 
         public Settings Settings
@@ -195,6 +198,15 @@ namespace Nowcast
             // One's own status takes the place of whatever plays.
             var isOwn = !isHidden && settings.ShowsOwn;
             var track = isHidden || isOwn ? null : Pick(sessions);
+            var desktop = isHidden || isOwn ? null : DesktopApps.Running(settings.Executables);
+            if (!isHidden && !isOwn && desktop == null) desktopKey = null;
+            // If the selected app is also the source of the current media
+            // session (for example Chrome playing YouTube), keep rich media data.
+            var desktopProcess = desktop == null ? "" : Path.GetFileNameWithoutExtension(
+                string.IsNullOrWhiteSpace(desktop.ExecutablePath) ? desktop.ProcessName : desktop.ExecutablePath);
+            if (desktop != null && track != null && !string.IsNullOrWhiteSpace(desktopProcess) &&
+                track.App.IndexOf(desktopProcess, StringComparison.OrdinalIgnoreCase) >= 0) desktop = null;
+            if (desktop != null) track = null;
             var previous = preview;
             bool sameTrack = previous != null && previous.Track != null && track != null && previous.Track.Key == track.Key;
             preview = new PreviewSnapshot(track, sameTrack ? previous.Image : null, sameTrack ? previous.Lyric : null);
@@ -211,6 +223,7 @@ namespace Nowcast
             // Each service has its own application, named after it: another
             // service means another connection. Closing one clears its status.
             var clientId = isOwn ? settings.OwnClientIdFor()
+                : desktop != null ? settings.ClientId
                 : track != null ? settings.ClientIdFor(track.Source)
                 : (discord.ClientId ?? settings.ClientId);
             if (discord.IsConnected && (discord.ClientId != clientId || discord.ActivityName != settings.ActivityNameOverride))
@@ -237,6 +250,7 @@ namespace Nowcast
             Report(!discord.IsConnected ? (discord.IsDenied ? Text.DiscordElevated : Text.DiscordOff)
                 : isHidden ? string.Format(Text.HiddenUntil, HiddenUntil)
                 : isOwn ? string.Format(Text.OwnShown, settings.OwnTitle.Trim())
+                : desktop != null ? desktop.Name + " — " + desktop.Title
                 : track == null ? Text.NothingPlaying
                 : Describe(track));
             if (!discord.IsConnected) return;
@@ -244,6 +258,11 @@ namespace Nowcast
             if (isOwn)
             {
                 Own();
+                return;
+            }
+            if (desktop != null)
+            {
+                ShowDesktop(desktop);
                 return;
             }
             var key = track == null ? "none" : track.Key;
@@ -309,6 +328,45 @@ namespace Nowcast
                 sentDuration = DurationMillis(track);
                 sentPlaying = playing;
                 sentAt = DateTime.Now;
+            }
+            catch (Exception e)
+            {
+                Log.Write("Lost Discord: " + e.Message);
+                discord.Dispose();
+                nextConnect = DateTime.Now.AddSeconds(5);
+            }
+        }
+
+        void ShowDesktop(DesktopApp app)
+        {
+            var key = app.Key;
+            if (app.SessionKey != desktopKey)
+            {
+                desktopKey = app.SessionKey;
+                desktopStart = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            }
+            var isResend = resendAt.HasValue && DateTime.Now >= resendAt.Value;
+            var imageChanged = app.Image != sentImage;
+            if (key == sentKey && !isResend && !imageChanged) return;
+            if ((DateTime.Now - sentAt).TotalSeconds < 4) return;
+            if (isResend) resendAt = null;
+            try
+            {
+                var activity = Activity.Desktop(app, desktopStart);
+                var refused = discord.SetActivity(activity);
+                if (refused != null && Activity.UseLinks && activity.ContainsKey("assets"))
+                {
+                    activity.Remove("assets");
+                    discord.SetActivity(activity);
+                }
+                sentKey = key;
+                sentImage = app.Image;
+                sentLyric = null;
+                sentStart = desktopStart;
+                sentDuration = 0;
+                sentPlaying = true;
+                sentAt = DateTime.Now;
+                Log.Write("Status: desktop app " + app.Name + " — " + app.Title);
             }
             catch (Exception e)
             {

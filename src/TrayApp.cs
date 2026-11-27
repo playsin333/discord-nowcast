@@ -19,14 +19,15 @@ namespace Nowcast
         readonly ToolStripMenuItem statusItem = new ToolStripMenuItem { Enabled = false };
         readonly ToolStripMenuItem hideItem = new ToolStripMenuItem(Text.HideHour);
         readonly ToolStripMenuItem sourcesItem = new ToolStripMenuItem(Text.Sources);
+        readonly ToolStripMenuItem executableAppsItem = new ToolStripMenuItem(Text.Ru ? "Приложения и процессы…" : "Apps and processes…");
+        readonly ToolStripMenuItem mainWindowItem = new ToolStripMenuItem(Text.Ru ? "Открыть Nowcast" : "Open Nowcast");
         readonly ToolStripMenuItem sessionsItem = new ToolStripMenuItem(Text.WhatWindowsSees);
         readonly ToolStripMenuItem autostartItem = new ToolStripMenuItem(Text.Autostart) { CheckOnClick = true };
         readonly ToolStripMenuItem ownItem = new ToolStripMenuItem(Text.OwnStatus);
         bool closing;
-        SettingsForm settingsForm;
-        OwnForm ownForm;
         SupportForm supportForm;
         SupportForm donationForm;
+        MainForm mainForm;
 
         public TrayApp()
         {
@@ -45,12 +46,19 @@ namespace Nowcast
                 else Startup.Disable();
             };
             ownItem.Click += delegate { ShowOwn(); };
+            executableAppsItem.Click += delegate
+            {
+                ShowApps();
+            };
+            mainWindowItem.Click += delegate { ShowMainWindow(); };
             sessionsItem.DropDownItems.Add(new ToolStripMenuItem(Text.NoSessions) { Enabled = false });
 
             menu.Items.Add(statusItem);
+            menu.Items.Add(mainWindowItem);
             menu.Items.Add(hideItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(sourcesItem);
+            menu.Items.Add(executableAppsItem);
             menu.Items.Add(sessionsItem);
             menu.Items.Add(autostartItem);
             menu.Items.Add(ownItem);
@@ -69,17 +77,19 @@ namespace Nowcast
             icon.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             icon.Text = "discord-nowcast";
             icon.ContextMenuStrip = menu;
-            // A left click opens the same menu as a right one.
+            // Left click opens the tray menu; double click opens the main window.
             icon.MouseUp += (sender, e) =>
             {
                 if (e.Button != MouseButtons.Left) return;
+                if (e.Clicks >= 2) { ShowMainWindow(); return; }
                 typeof(NotifyIcon).GetMethod("ShowContextMenu", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(icon, null);
             };
+            icon.DoubleClick += delegate { ShowMainWindow(); };
             icon.Visible = true;
 
             engine.Changed += delegate
             {
-                if (ui.IsHandleCreated) ui.BeginInvoke(new Action(RefreshStatus));
+                if (ui.IsHandleCreated) ui.BeginInvoke(new Action(delegate { RefreshStatus(); if (mainForm != null && mainForm.Visible) mainForm.RefreshFromEngine(); }));
             };
 
             if (Startup.IsNewInstall) icon.ShowBalloonTip(8000, "discord-nowcast", Text.Running, ToolTipIcon.Info);
@@ -88,6 +98,7 @@ namespace Nowcast
             engine.Start();
             // Queue after the message loop starts; the engine keeps running behind the window.
             if (SupportForm.ShouldShow) ui.BeginInvoke(new Action(ShowSupport));
+            ui.BeginInvoke(new Action(ShowMainWindow));
 
             // One check per launch, after the tray and startup prompt are ready.
             firstCheck.Tick += delegate
@@ -104,6 +115,19 @@ namespace Nowcast
             if (donationForm == null || donationForm.IsDisposed) donationForm = new SupportForm(true);
             donationForm.Show();
             donationForm.Activate();
+        }
+
+        void ShowMainWindow()
+        {
+            if (mainForm == null || mainForm.IsDisposed)
+                mainForm = new MainForm(engine, ExitThread);
+            mainForm.ShowAgain();
+        }
+
+        void ShowApps()
+        {
+            ShowMainWindow();
+            mainForm.ShowAppsPage();
         }
 
         void ShowSupport()
@@ -147,14 +171,14 @@ namespace Nowcast
         // One window at a time: a second click brings the open one forward.
         void ShowSettings()
         {
-            if (settingsForm == null || settingsForm.IsDisposed) settingsForm = new SettingsForm(engine);
-            settingsForm.ShowAgain();
+            ShowMainWindow();
+            mainForm.ShowSettingsPage();
         }
 
         void ShowOwn()
         {
-            if (ownForm == null || ownForm.IsDisposed) ownForm = new OwnForm();
-            ownForm.ShowAgain();
+            ShowMainWindow();
+            mainForm.ShowOwnPage();
         }
 
         // A checkbox per source: a cleared box keeps that app out of the status.
@@ -236,6 +260,7 @@ namespace Nowcast
         {
             closing = true;
             icon.Visible = false;
+            if (mainForm != null && !mainForm.IsDisposed) mainForm.Shutdown();
             engine.Stop();
             if (supportForm != null) supportForm.Dispose();
             if (donationForm != null) donationForm.Dispose();

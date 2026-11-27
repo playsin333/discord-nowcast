@@ -17,6 +17,20 @@ namespace Nowcast
         static readonly string[] coverValues = { "player", "itunes", "picture", "none" };
 
         readonly Engine engine;
+        readonly Panel page = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Theme.Back };
+        readonly FlowLayoutPanel body = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(0, 8, 0, 24),
+            Margin = Padding.Empty,
+            BackColor = Theme.Back,
+        };
+        readonly List<FlowLayoutPanel> cards = new List<FlowLayoutPanel>();
+        Action openAppsPage, closePage;
+        bool embedded;
         Settings displayedSettings;
         DateTime settingsWritten;
         readonly StatusPreview preview = new StatusPreview { Visible = false };
@@ -26,6 +40,7 @@ namespace Nowcast
         readonly Timer refreshTimer = new Timer { Interval = 1000 };
         string sourcesKey;
         bool previewExpanded, moreExpanded;
+        bool layingOut;
         readonly ComboBox inList = Choices();
         readonly TextBox activityName = OwnForm.Line();
         readonly Theme.CheckBox invisibleName = new Theme.CheckBox { Text = Strings.InvisibleActivityName };
@@ -36,6 +51,7 @@ namespace Nowcast
         readonly Theme.CheckBox showPaused = new Theme.CheckBox { Text = Strings.ShowPausedOption };
         readonly Theme.CheckBox hideAlbum = new Theme.CheckBox { Text = Strings.HideAlbumOption };
         readonly Theme.CheckBox lyrics = new Theme.CheckBox { Text = Strings.LyricsOption };
+        readonly Timer activityNameTimer = new Timer { Interval = 650 };
         // A checkbox per source, in a scrolling box.
         readonly FlowLayoutPanel sources = new FlowLayoutPanel
         {
@@ -50,9 +66,11 @@ namespace Nowcast
         readonly Theme.CheckBox checkUpdates = new Theme.CheckBox { Text = Strings.CheckUpdatesOption };
         bool isLoading;
 
-        public SettingsForm(Engine engine)
+        public SettingsForm(Engine engine, Action openAppsPage = null, Action closePage = null)
         {
             this.engine = engine;
+            this.openAppsPage = openAppsPage;
+            this.closePage = closePage;
             Text = "discord-nowcast";
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             Font = SystemFonts.MessageBoxFont;
@@ -74,51 +92,53 @@ namespace Nowcast
             coverSource.Items.AddRange(new object[] { Strings.CoverPlayer, Strings.CoverITunes, Strings.CoverPicture, Strings.CoverNone });
             coverSource.DrawItem += DrawChoice;
 
-            var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false };
-            layout.Controls.Add(previewToggle);
-            layout.Controls.Add(preview);
-            layout.Controls.Add(Heading(Strings.StatusHeading));
-            layout.Controls.Add(Note(Strings.ActivityNameLabel));
-            layout.Controls.Add(activityName);
             activityName.MaxLength = 128;
-            layout.Controls.Add(invisibleName);
-            layout.Controls.Add(ActionButton(Strings.ApplyActivityName, delegate
+            var intro = new Label
             {
-                Change(s => { s.ActivityName = activityName.Text; s.InvisibleActivityName = invisibleName.Checked; });
-            }));
-            layout.Controls.Add(Note(Strings.ActivityNameNote));
-            layout.Controls.Add(Note(Strings.InListLabel));
-            layout.Controls.Add(inList);
-            layout.Controls.Add(Note(Strings.CoverLabel));
-            layout.Controls.Add(coverSource);
-            layout.Controls.Add(fallbackLabel);
-            layout.Controls.Add(fallback);
-            layout.Controls.Add(buttons);
-            layout.Controls.Add(moreToggle);
+                Text = Strings.Ru ? "Настройки" : "Settings",
+                AutoSize = true,
+                Font = new Font(SystemFonts.MessageBoxFont.FontFamily, 22, FontStyle.Bold),
+                ForeColor = Color.White,
+                Margin = new Padding(0, 0, 0, 4),
+            };
+            body.Controls.Add(intro);
+            body.Controls.Add(WideNote(Strings.Ru
+                ? "Настройте, что Nowcast показывает в Discord. Изменения сохраняются автоматически."
+                : "Choose what Nowcast shows on Discord. Changes are saved automatically."));
+            body.Controls.Add(SectionCard(Strings.StatusHeading, Strings.Ru ? "Можно оставить имя по умолчанию или задать своё." : "Keep the default name or choose your own.",
+                previewToggle, preview, Note(Strings.ActivityNameLabel), activityName, invisibleName, WideNote(Strings.ActivityNameNote),
+                Note(Strings.InListLabel), inList));
+
+            coverSource.Width = 540;
+            inList.Width = 540;
+            body.Controls.Add(SectionCard(Strings.Ru ? "Внешний вид статуса" : "Status appearance",
+                Strings.Ru ? "Выберите, что Discord покажет рядом с названием трека." : "Choose what Discord displays with the track.",
+                Note(Strings.CoverLabel), coverSource, fallbackLabel, fallback, buttons, moreToggle, more));
             more.Controls.Add(showPaused);
             more.Controls.Add(hideAlbum);
             more.Controls.Add(lyrics);
-            layout.Controls.Add(more);
-            layout.Controls.Add(Heading(Strings.Sources));
-            layout.Controls.Add(Note(Strings.SourcesNote));
-            layout.Controls.Add(sources);
-            layout.Controls.Add(Heading(Strings.ProgramHeading));
-            layout.Controls.Add(autostart);
-            layout.Controls.Add(checkUpdates);
+            body.Controls.Add(SectionCard(Strings.Sources,
+                Strings.Ru ? "Снимите флажок, чтобы не показывать этот источник в Discord." : "Clear a box to hide that source from Discord.",
+                sources, ActionButton(Strings.Ru ? "Приложения и процессы…" : "Apps and processes…", delegate
+            {
+                if (this.openAppsPage != null) this.openAppsPage();
+                else using (var picker = new DesktopAppsForm()) picker.ShowDialog(this);
+            })));
+            body.Controls.Add(SectionCard(Strings.ProgramHeading,
+                Strings.Ru ? "Общие параметры запуска и обновлений." : "Startup and update options.",
+                autostart, checkUpdates));
 
             var server = ActionButton(Strings.DiscordServer, delegate { Program.Open(Program.DiscordInvite, null); });
             server.Margin = new Padding(0, 12, 0, 0);
-            layout.Controls.Add(server);
 
-            var links = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 12, 0, 0) };
+            var links = new FlowLayoutPanel { AutoSize = true, WrapContents = true, Margin = new Padding(0, 8, 0, 0) };
             links.Controls.Add(ActionButton(Strings.OpenLog, delegate { Program.Open("notepad.exe", Log.FilePath); }));
             links.Controls.Add(ActionButton(Strings.Advanced, delegate { Program.Open("notepad.exe", Settings.FilePath); }));
             links.Controls.Add(new Label { Text = "v" + Program.Version, AutoSize = true, ForeColor = Theme.Muted, Margin = new Padding(12, 3, 0, 0) });
-            layout.Controls.Add(links);
 
             var close = new Button
             {
-                Text = Strings.Close,
+                Text = this.closePage == null ? Strings.Close : (Strings.Ru ? "Назад" : "Back"),
                 AutoSize = true,
                 Anchor = AnchorStyles.Right,
                 Margin = new Padding(0, 12, 0, 0),
@@ -131,26 +151,44 @@ namespace Nowcast
             close.FlatAppearance.BorderSize = 0;
             close.FlatAppearance.MouseOverBackColor = Theme.AccentHover;
             close.FlatAppearance.MouseDownBackColor = Theme.AccentHover;
-            close.Click += delegate { Close(); };
+            close.Click += delegate { if (this.closePage != null) this.closePage(); else Close(); };
             CancelButton = close;
-            layout.Controls.Add(close);
-            Controls.Add(layout);
+            body.Controls.Add(SectionCard(Strings.Ru ? "Помощь и обслуживание" : "Help and maintenance", null, server, links, close));
+            page.Controls.Add(body);
+            Controls.Add(page);
+            page.Resize += delegate { LayoutBody(); };
+            LayoutBody();
 
             Fill();
-            invisibleName.CheckedChanged += delegate { activityName.Enabled = !invisibleName.Checked; };
+            invisibleName.CheckedChanged += delegate
+            {
+                activityName.Enabled = !invisibleName.Checked;
+                Change(s => { s.ActivityName = activityName.Text; s.InvisibleActivityName = invisibleName.Checked; });
+            };
+            activityName.TextChanged += delegate
+            {
+                if (isLoading) return;
+                activityNameTimer.Stop();
+                activityNameTimer.Start();
+            };
+            activityNameTimer.Tick += delegate
+            {
+                activityNameTimer.Stop();
+                Change(s => { s.ActivityName = activityName.Text; s.InvisibleActivityName = invisibleName.Checked; });
+            };
             previewToggle.Click += delegate
             {
                 previewExpanded = !previewExpanded;
                 preview.Visible = previewExpanded;
                 previewToggle.Text = previewExpanded ? Strings.HidePreview : Strings.ShowPreview;
-                RefreshPreview(); FitToScreen(this, false);
+                RefreshPreview(); FitOrLayout(false);
             };
             moreToggle.Click += delegate
             {
                 moreExpanded = !moreExpanded;
                 more.Visible = moreExpanded;
                 moreToggle.Text = moreExpanded ? Strings.LessOptions : Strings.MoreOptions;
-                FitToScreen(this, false);
+                FitOrLayout(false);
             };
             refreshTimer.Tick += delegate { RefreshPanels(); };
             VisibleChanged += delegate
@@ -222,6 +260,82 @@ namespace Nowcast
             sources.Controls.Add(box);
         }
 
+        FlowLayoutPanel SectionCard(string title, string description, params Control[] controls)
+        {
+            var card = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                BackColor = Theme.Field,
+                Padding = new Padding(18),
+                Margin = new Padding(0, 0, 0, 14),
+            };
+            card.Controls.Add(Heading(title));
+            if (!string.IsNullOrWhiteSpace(description)) card.Controls.Add(WideNote(description));
+            foreach (var control in controls)
+            {
+                control.Margin = new Padding(0, 4, 0, 4);
+                card.Controls.Add(control);
+            }
+            cards.Add(card);
+            return card;
+        }
+
+        static Label WideNote(string text)
+        {
+            return new Label
+            {
+                Text = text,
+                AutoSize = true,
+                MaximumSize = new Size(950, 0),
+                ForeColor = Theme.Muted,
+                Tag = "wide-note",
+                Margin = new Padding(0, 0, 0, 4),
+            };
+        }
+
+        void LayoutBody()
+        {
+            if (layingOut || page.ClientSize.Width <= 0) return;
+            layingOut = true;
+            try
+            {
+                int width = Math.Max(560, Math.Min(1060, page.ClientSize.Width - 52));
+                int controlWidth = Math.Max(500, width - 72);
+                body.Width = width;
+                body.Left = Math.Max(24, (page.ClientSize.Width - width) / 2);
+                activityName.Width = controlWidth;
+                inList.Width = coverSource.Width = controlWidth;
+                sources.Width = controlWidth;
+                SetWideNoteWidths(body, controlWidth);
+                foreach (var card in cards)
+                {
+                    // AutoSize otherwise shrinks cards to their shortest child,
+                    // making the settings page look like unrelated columns.
+                    card.MinimumSize = new Size(width, 0);
+                    card.Width = width;
+                    card.PerformLayout();
+                }
+                body.PerformLayout();
+                body.Height = body.GetPreferredSize(new Size(width, 0)).Height;
+                page.AutoScrollMinSize = new Size(body.Left + width + 24, body.Top + body.Height + 24);
+            }
+            finally { layingOut = false; }
+        }
+
+        static void SetWideNoteWidths(Control parent, int width)
+        {
+            foreach (Control child in parent.Controls)
+            {
+                var label = child as Label;
+                if (label != null && string.Equals(label.Tag as string, "wide-note", StringComparison.Ordinal))
+                    label.MaximumSize = new Size(width, 0);
+                SetWideNoteWidths(child, width);
+            }
+        }
+
         // The list's lines, closed and open, in the window's colors.
         public static void DrawChoice(object sender, DrawItemEventArgs e)
         {
@@ -235,7 +349,7 @@ namespace Nowcast
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            SettingsForm.FitToScreen(this);
+            if (!embedded) SettingsForm.FitToScreen(this);
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -250,6 +364,31 @@ namespace Nowcast
             Show();
             if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
             Activate();
+        }
+
+        public void PrepareEmbedded(Action openApps, Action done)
+        {
+            embedded = true;
+            openAppsPage = openApps;
+            closePage = done;
+            TopLevel = false;
+            FormBorderStyle = FormBorderStyle.None;
+            AutoSize = false;
+            Dock = DockStyle.Fill;
+            page.Dock = DockStyle.Fill;
+            LayoutBody();
+        }
+
+        public void FocusTop()
+        {
+            page.AutoScrollPosition = Point.Empty;
+            page.PerformLayout();
+        }
+
+        void FitOrLayout(bool center)
+        {
+            if (embedded) { LayoutBody(); body.PerformLayout(); PerformLayout(); }
+            else FitToScreen(this, center);
         }
 
         // From the file as it is now, so edits made by hand are kept.
@@ -277,7 +416,7 @@ namespace Nowcast
             if (resized) Fill();
             resized = RefreshSources() || resized;
             RefreshPreview();
-            if (resized && IsHandleCreated && Visible) FitToScreen(this, false);
+            if (resized && IsHandleCreated && Visible) FitOrLayout(false);
         }
 
         bool RefreshSources()
@@ -331,7 +470,7 @@ namespace Nowcast
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) refreshTimer.Dispose();
+            if (disposing) { refreshTimer.Dispose(); activityNameTimer.Dispose(); }
             base.Dispose(disposing);
         }
 
